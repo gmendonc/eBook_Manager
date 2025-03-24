@@ -1,0 +1,8 @@
+# Ignore virtual environment directory
+.venv/
+__pycache__/
+
+# Ignore CSV and config files
+*.csv
+*.json
+*.log
