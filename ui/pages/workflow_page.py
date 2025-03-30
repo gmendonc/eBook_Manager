@@ -85,8 +85,18 @@ def render_workflow_page(library_service, app_state):
             
             # 3. Enriquecer dados
             enrich_status.markdown("🔍 **Enriquecendo metadados...**")
+
+            # Permitir a seleção do método de enriquecimento
+            available_enrichers = library_service.get_available_enrichers()
+            active_enricher = library_service.get_active_enricher_name()
+
+            enricher_name = st.selectbox(
+                "Método de enriquecimento:",
+                options=available_enrichers,
+                index=available_enrichers.index(active_enricher) if active_enricher in available_enrichers else 0
+            )
             
-            enriched_path = library_service.enrich_csv(merged_path)
+            enriched_path = library_service.enrich_csv(merged_path, enricher_name)
             if not enriched_path:
                 enrich_status.markdown("❌ **Falha ao enriquecer dados.**")
                 progress_bar.progress(1.0)

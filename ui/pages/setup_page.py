@@ -12,7 +12,7 @@ def render_setup_page(library_service, app_state):
     st.markdown('<div class="main-header">⚙️ Configuração de Fontes</div>', unsafe_allow_html=True)
     
     # Abas para configuração
-    tab1, tab2, tab3 = st.tabs(["Adicionar Fonte", "Gerenciar Fontes", "Configurar Taxonomia"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Adicionar Fonte", "Gerenciar Fontes", "Configurar Taxonomia", "Método de Enriquecimento"])
     
     with tab1:
         st.markdown('<div class="section-header">📂 Adicionar Nova Fonte</div>', unsafe_allow_html=True)
@@ -79,3 +79,57 @@ def render_setup_page(library_service, app_state):
                 st.success(f"Taxonomia atualizada para: {new_path}")
             else:
                 st.error("Erro ao atualizar taxonomia.")
+    
+    with tab4:
+        st.markdown('<div class="section-header">🔧 Configurar Método de Enriquecimento</div>', unsafe_allow_html=True)
+        
+        # Obter métodos disponíveis
+        available_enrichers = library_service.get_available_enrichers()
+        active_enricher = library_service.get_active_enricher_name()
+        
+        if not available_enrichers:
+            st.warning("Nenhum método de enriquecimento disponível.")
+        else:
+            # Descrições dos métodos
+            enricher_descriptions = {
+                'default': "Enriquecimento completo com extração de metadata e classificação de temas",
+                'basic': "Enriquecimento básico (apenas extração de autor e título)",
+                'external_api': "Enriquecimento com API externa (Open Library)"
+            }
+            
+            st.markdown("### Selecione o método de enriquecimento")
+            
+            for enricher_name in available_enrichers:
+                description = enricher_descriptions.get(enricher_name, "")
+                is_active = enricher_name == active_enricher
+                
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    if st.button(
+                        "✓ Ativo" if is_active else "Ativar", 
+                        key=f"activate_{enricher_name}",
+                        disabled=is_active
+                    ):
+                        if library_service.set_active_enricher(enricher_name):
+                            st.success(f"Método '{enricher_name}' ativado com sucesso!")
+                            st.rerun()
+                        else:
+                            st.error(f"Erro ao ativar método '{enricher_name}'.")
+                
+                with col2:
+                    st.markdown(f"**{enricher_name}**")
+                    if description:
+                        st.markdown(f"_{description}_")
+            
+            # Configurações específicas para o método External API
+            if 'external_api' in available_enrichers:
+                st.markdown("### Configurações da API Externa")
+                api_key = st.text_input("Chave de API (opcional)", 
+                                        type="password", 
+                                        help="Use apenas se a API escolhida exigir uma chave")
+                
+                if st.button("Salvar Configuração API"):
+                    if library_service.configure_external_api_enricher(api_key):
+                        st.success("Configuração da API salva com sucesso!")
+                    else:
+                        st.error("Erro ao salvar configuração da API.")

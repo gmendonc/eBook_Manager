@@ -184,18 +184,74 @@ class LibraryService:
                 
         return csv_paths
     
-    def enrich_csv(self, csv_path: str) -> Optional[str]:
+    # Enrichers
+    def get_available_enrichers(self) -> List[str]:
+        """
+        Obtém a lista de enriquecedores disponíveis.
+    
+        Returns:
+            Lista de nomes de enriquecedores
+        """
+        return self.enrich_service.get_available_enrichers()
+
+    def get_active_enricher_name(self) -> Optional[str]:
+        """
+        Obtém o nome do enriquecedor ativo.
+
+        Returns:
+            Nome do enriquecedor ativo ou None se nenhum estiver ativo
+        """
+        return self.enrich_service.active_enricher_name
+
+    def set_active_enricher(self, name: str) -> bool:
+        """
+        Define o enriquecedor ativo.
+
+        Args:
+            name: Nome do enriquecedor a ser ativado
+
+        Returns:
+            True se o enriquecedor foi ativado com sucesso
+        """
+        return self.enrich_service.set_active_enricher(name)
+
+    def configure_external_api_enricher(self, api_key: str) -> bool:
+        """
+        Configura o enriquecedor de API externa.
+    
+        Args:
+            api_key: Chave de API para o serviço externo
+        
+        Returns:
+            True se a configuração foi bem-sucedida
+        """
+        try:
+            # Verificar se o enriquecedor está registrado
+            if 'external_api' not in self.enrich_service.enricher_registry:
+                return False
+            
+            # Atualizar a chave de API
+            enricher = self.enrich_service.enricher_registry['external_api']
+            enricher.api_key = api_key
+        
+            return True
+        except Exception as e:
+            self.logger.error(f"Erro ao configurar enriquecedor de API externa: {str(e)}")
+            return False
+    
+    def enrich_csv(self, csv_path: str, enricher_name: Optional[str] = None) -> Optional[str]:
         """
         Enriquece os dados de um arquivo CSV.
-        
+    
         Args:
             csv_path: Caminho para o arquivo CSV
-            
+            enricher_name: Nome do enriquecedor a ser usado (opcional)
+        
         Returns:
             Caminho para o CSV enriquecido ou None em caso de erro
         """
         taxonomy_path = self.config_repository.get_taxonomy_path()
-        return self.enrich_service.enrich(csv_path, taxonomy_path)
+        return self.enrich_service.enrich(csv_path, taxonomy_path, enricher_name)
     
     def export_to_notion(self, csv_path: str, config: Optional[Dict[str, Any]] = None) -> bool:
         """

@@ -29,7 +29,10 @@ from adapters.scanners.icloud_scanner import ICloudScanner
 from adapters.scanners.filesystem_scanner import FileSystemScanner
 from adapters.scanners.dropbox_scanner import DropboxScanner
 from adapters.scanners.kindle_scanner import KindleScanner
-from adapters.enricher_adapter import DefaultEnricher
+# Importar os novos enriquecedores
+from adapters.enrichers.default_enricher import DefaultEnricher
+from adapters.enrichers.basic_enricher import BasicEnricher
+from adapters.enrichers.external_api_enricher import ExternalAPIEnricher
 from adapters.notion_adapter import NotionExporter
 
 from ui.state import AppState
@@ -86,8 +89,18 @@ if 'initialized' not in st.session_state:
     
     # Create services
     scan_service = ScanService(scanner_registry)
-    enricher = DefaultEnricher()  # Create the enricher
-    enrich_service = EnrichService(enricher)
+    enrich_service = EnrichService()
+    # Criar instâncias dos enriquecedores
+    default_enricher = DefaultEnricher()
+    basic_enricher = BasicEnricher()
+    external_api_enricher = ExternalAPIEnricher()
+    # Registrar os enriquecedores
+    enrich_service.register_enricher('default', default_enricher)
+    enrich_service.register_enricher('basic', basic_enricher)
+    enrich_service.register_enricher('external_api', external_api_enricher)
+    # Definir o enriquecedor padrão
+    enrich_service.set_active_enricher('default')
+    
     export_service = ExportService()
     
     # Create library service
