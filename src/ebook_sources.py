@@ -101,30 +101,19 @@ class ICloudEbookScanner:
         '.azw': 'AZW',
         '.azw3': 'AZW3',
         '.kfx': 'KFX',
-        '.txt': 'TXT',
-        '.djvu': 'DJVU',
-        '.fb2': 'FB2',
-        '.cbz': 'CBZ',
-        '.cbr': 'CBR'
+        '.txt': 'TXT'
     }
     
     def __init__(self, usuario: str, senha: str):
         self.logger = logging.getLogger(__name__)
         self.api = None
-        self.logger.info(f"Conectando ao iCloud com usuário: {usuario}")
-        
-        if not ICLOUD_AVAILABLE:
-            self.logger.error("Módulo PyiCloudService não disponível. Instale com 'pip install pyicloud'")
-            raise ImportError("Módulo PyiCloudService não disponível")
-            
         try:
             self.api = PyiCloudService(usuario, senha)
-            
-            # Verificar se é necessária autenticação adicional
-            auth_manager = ICloudAuthManager()
-            if not auth_manager.handle_2fa(self.api):
-                raise Exception("Falha na autenticação de dois fatores")
-                
+            # Verificar se requer autenticação de dois fatores
+            if self.api.requires_2fa:
+                self.logger.warning("Autenticação de dois fatores necessária!")
+            elif self.api.requires_2sa:
+                self.logger.warning("Verificação em duas etapas necessária!")
         except Exception as e:
             self.logger.error(f"Erro ao conectar ao iCloud: {str(e)}")
             raise
@@ -138,16 +127,27 @@ class ICloudEbookScanner:
         return self.FORMATOS_EBOOK.get(extensao, 'Desconhecido')
     
     def scan_pasta(self, caminho_pasta: str) -> List[EbookFile]:
+        """
+        Escaneia uma pasta no iCloud Drive em busca de ebooks.
+        
+        Args:
+            caminho_pasta: Caminho para a pasta no iCloud Drive (ex: Documents/Ebooks)
+            
+        Returns:
+            Lista de objetos EbookFile encontrados
+        """
         ebooks = []
-        self.logger.info(f"Escaneando pasta iCloud Drive modificada: {caminho_pasta}")
+        self.logger.info(f"Escaneando pasta iCloud Drive: {caminho_pasta}")
         try:
             # Ajuste o caminho para o formato correto
             caminho_pasta_formatado = caminho_pasta.split('/')
             pasta = self.api.drive
             self.logger.info(f"Conteúdo do iCloud Drive: {pasta.dir()}")
             for parte in caminho_pasta_formatado:
-                pasta = pasta[parte]
-                self.logger.info(f"Parte: {parte}")
+                if parte:  # Ignorar partes vazias (ex: caminhos que começam com /)
+                    pasta = pasta[parte]
+                    self.logger.info(f"Parte: {parte}")
+            
             for item_str in pasta.dir():
                 item = pasta[item_str]
                 if self.is_ebook(item.name):
@@ -162,7 +162,7 @@ class ICloudEbookScanner:
                     self.logger.info(f"Ebook encontrado: {item.name}")
         
         except Exception as e:
-            self.logger.error(f"Erro Bruto ao escanear pasta {caminho_pasta}: {str(e)}")
+            self.logger.error(f"Erro ao escanear pasta {caminho_pasta}: {str(e)}")
             raise
         
         return ebooks
@@ -193,28 +193,6 @@ class ICloudEbookScanner:
                 relatorio.append("-" * 50)
             
             return '\n'.join(relatorio)
-    
-    def save_report_csv(self, ebooks: List[EbookFile], output_path: str) -> bool:
-        """Salva o relatório em um arquivo CSV."""
-        try:
-            df = pd.DataFrame([
-                {
-                    'Nome': ebook.nome,
-                    'Formato': ebook.formato,
-                    'Tamanho(MB)': round(ebook.tamanho / (1024 * 1024), 2),
-                    'Data Modificação': ebook.data_modificacao.strftime('%Y-%m-%d %H:%M:%S'),
-                    'Caminho': ebook.caminho
-                }
-                for ebook in ebooks
-            ])
-            
-            df.to_csv(output_path, index=False, encoding='utf-8')
-            self.logger.info(f"Relatório salvo em {output_path}")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Erro ao salvar relatório CSV: {str(e)}")
-            return False
 
 class FileSystemEbookScanner:
     """Classe para escanear ebooks no sistema de arquivos local."""
