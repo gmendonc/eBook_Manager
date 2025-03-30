@@ -33,6 +33,8 @@ from adapters.scanners.kindle_scanner import KindleScanner
 from adapters.enrichers.default_enricher import DefaultEnricher
 from adapters.enrichers.basic_enricher import BasicEnricher
 from adapters.enrichers.external_api_enricher import ExternalAPIEnricher
+from adapters.enrichers.google_books_enricher import GoogleBooksEnricher
+from adapters.enrichers.factory import register_all_enrichers
 from adapters.notion_adapter import NotionExporter
 
 from ui.state import AppState
@@ -90,17 +92,26 @@ if 'initialized' not in st.session_state:
     # Create services
     scan_service = ScanService(scanner_registry)
     enrich_service = EnrichService()
-    # Criar instâncias dos enriquecedores
-    default_enricher = DefaultEnricher()
-    basic_enricher = BasicEnricher()
-    external_api_enricher = ExternalAPIEnricher()
-    # Registrar os enriquecedores
-    enrich_service.register_enricher('default', default_enricher)
-    enrich_service.register_enricher('basic', basic_enricher)
-    enrich_service.register_enricher('external_api', external_api_enricher)
-    # Definir o enriquecedor padrão
-    enrich_service.set_active_enricher('default')
-    
+
+    # Load API keys from configuration (if available)
+    enricher_config = {}
+    try:
+        # This assumes you have a way to get API keys from configuration
+        # This could be from a JSON file, environment variables, etc.
+        # Here's a simple example using config_repository
+        config = config_repository.load_config()
+        if 'enrichers' in config:
+            if 'external_api_key' in config['enrichers']:
+                enricher_config['external_api_key'] = config['enrichers']['external_api_key']
+            if 'google_books_api_key' in config['enrichers']:
+                enricher_config['google_books_api_key'] = config['enrichers']['google_books_api_key']
+    except Exception as e:
+        logger.warning(f"Could not load enricher API keys from configuration: {str(e)}")
+
+    # Register all enrichers using the factory
+    register_all_enrichers(enrich_service, enricher_config, set_default='default')
+
+  
     export_service = ExportService()
     
     # Create library service

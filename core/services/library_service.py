@@ -340,3 +340,95 @@ class LibraryService:
             Caminho para o arquivo de taxonomia
         """
         return self.config_repository.get_taxonomy_path()
+    
+    # Add these methods to the LibraryService class in core/services/library_service.py
+
+    def configure_enricher_api_key(self, enricher_name: str, api_key: str) -> bool:
+        """
+        Configures an API key for a specific enricher.
+    
+        This is a generic method that can be used for any enricher that requires an API key.
+    
+        Args:
+            enricher_name: Name of the enricher to configure
+            api_key: API key to set
+        
+        Returns:
+            True if the configuration was successful
+        """
+        try:
+            # Verify that the enricher is registered
+            if enricher_name not in self.enrich_service.enricher_registry:
+                self.logger.error(f"Enricher '{enricher_name}' not registered")
+                return False
+        
+            # Access the enricher from the registry
+            enricher = self.enrich_service.enricher_registry[enricher_name]
+        
+            # Set the API key
+            enricher.api_key = api_key
+        
+            # Save API key in configuration for persistence
+            self._save_enricher_config(enricher_name, api_key)
+        
+            self.logger.info(f"API key configured for {enricher_name} enricher")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error configuring {enricher_name} enricher: {str(e)}")
+            return False
+
+    def configure_external_api_enricher(self, api_key: str) -> bool:
+        """
+        Configures the External API enricher.
+    
+        Args:
+            api_key: API key for the External API
+        
+        Returns:
+            True if the configuration was successful
+        """
+        return self.configure_enricher_api_key('external_api', api_key)
+
+    def configure_google_books_enricher(self, api_key: str) -> bool:
+        """
+        Configures the Google Books enricher.
+    
+        Args:
+            api_key: API key for the Google Books API
+        
+        Returns:
+            True if the configuration was successful
+        """
+        return self.configure_enricher_api_key('google_books', api_key)
+
+    def _save_enricher_config(self, enricher_name: str, api_key: str) -> bool:
+        """
+        Saves enricher configuration for persistence.
+    
+        This method saves the API key to the configuration repository
+        so it can be retrieved when the application restarts.
+    
+        Args:
+            enricher_name: Name of the enricher
+            api_key: API key to save
+        
+        Returns:
+            True if saving was successful
+        """
+        try:
+            # Load current configuration
+            config = self.config_repository.load_config()
+        
+            # Ensure 'enrichers' section exists
+            if 'enrichers' not in config:
+                config['enrichers'] = {}
+        
+            # Add or update the API key
+            config_key = f"{enricher_name}_api_key"
+            config['enrichers'][config_key] = api_key
+        
+            # Save the updated configuration
+            return self.config_repository.save_config(config)
+        except Exception as e:
+            self.logger.error(f"Error saving enricher configuration: {str(e)}")
+            return False

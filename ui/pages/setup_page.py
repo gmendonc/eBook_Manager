@@ -82,11 +82,11 @@ def render_setup_page(library_service, app_state):
     
     with tab4:
         st.markdown('<div class="section-header">🔧 Configurar Método de Enriquecimento</div>', unsafe_allow_html=True)
-        
+    
         # Obter métodos disponíveis
         available_enrichers = library_service.get_available_enrichers()
         active_enricher = library_service.get_active_enricher_name()
-        
+    
         if not available_enrichers:
             st.warning("Nenhum método de enriquecimento disponível.")
         else:
@@ -94,15 +94,16 @@ def render_setup_page(library_service, app_state):
             enricher_descriptions = {
                 'default': "Enriquecimento completo com extração de metadata e classificação de temas",
                 'basic': "Enriquecimento básico (apenas extração de autor e título)",
-                'external_api': "Enriquecimento com API externa (Open Library)"
+                'external_api': "Enriquecimento com API externa (Open Library)",
+                'google_books': "Enriquecimento usando a API do Google Books (dados detalhados, capas, ISBNs)"
             }
-            
+        
             st.markdown("### Selecione o método de enriquecimento")
-            
+        
             for enricher_name in available_enrichers:
                 description = enricher_descriptions.get(enricher_name, "")
                 is_active = enricher_name == active_enricher
-                
+            
                 col1, col2 = st.columns([1, 3])
                 with col1:
                     if st.button(
@@ -115,21 +116,40 @@ def render_setup_page(library_service, app_state):
                             st.rerun()
                         else:
                             st.error(f"Erro ao ativar método '{enricher_name}'.")
-                
+            
                 with col2:
                     st.markdown(f"**{enricher_name}**")
                     if description:
                         st.markdown(f"_{description}_")
-            
+        
             # Configurações específicas para o método External API
             if 'external_api' in available_enrichers:
                 st.markdown("### Configurações da API Externa")
-                api_key = st.text_input("Chave de API (opcional)", 
+                api_key = st.text_input("Chave de API (opcional para Open Library)", 
                                         type="password", 
                                         help="Use apenas se a API escolhida exigir uma chave")
-                
-                if st.button("Salvar Configuração API"):
+            
+                if st.button("Salvar Configuração API Externa"):
                     if library_service.configure_external_api_enricher(api_key):
-                        st.success("Configuração da API salva com sucesso!")
+                        st.success("Configuração da API externa salva com sucesso!")
                     else:
-                        st.error("Erro ao salvar configuração da API.")
+                        st.error("Erro ao salvar configuração da API externa.")
+        
+            # Configurações específicas para o método Google Books
+            if 'google_books' in available_enrichers:
+                st.markdown("### Configurações do Google Books")
+                st.info("""
+                A API do Google Books pode ser usada sem chave para um número limitado de requisições.
+                Para maior quota, você pode obter uma chave de API no Google Cloud Console.
+                """)
+            
+                gb_api_key = st.text_input("Chave de API do Google Books (opcional)", 
+                                          type="password", 
+                                          help="A API do Google Books pode ser usada sem chave, mas com limites reduzidos de requisições")
+            
+                if st.button("Salvar Configuração Google Books"):
+                    # This assumes you've added a method to LibraryService for configuring Google Books
+                    if library_service.configure_google_books_enricher(gb_api_key):
+                        st.success("Configuração do Google Books salva com sucesso!")
+                    else:
+                        st.error("Erro ao salvar configuração do Google Books.")
