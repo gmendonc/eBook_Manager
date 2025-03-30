@@ -29,6 +29,7 @@ from adapters.scanners.icloud_scanner import ICloudScanner
 from adapters.scanners.filesystem_scanner import FileSystemScanner
 from adapters.scanners.dropbox_scanner import DropboxScanner
 from adapters.scanners.kindle_scanner import KindleScanner
+from adapters.enricher_adapter import DefaultEnricher
 from adapters.notion_adapter import NotionExporter
 
 from ui.state import AppState
@@ -85,7 +86,8 @@ if 'initialized' not in st.session_state:
     
     # Create services
     scan_service = ScanService(scanner_registry)
-    enrich_service = EnrichService()
+    enricher = DefaultEnricher()  # Create the enricher
+    enrich_service = EnrichService(enricher)
     export_service = ExportService()
     
     # Create library service

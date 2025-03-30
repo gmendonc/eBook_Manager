@@ -41,3 +41,8 @@
     margin: 0.5rem 0;
     border-left: 5px solid #0d6efd;
 }
+
+/* Add a specific text color to ensure visibility */
+.info-card p, .info-card h3 {
+    color: #212529;  /* Dark text color for contrast */
+}

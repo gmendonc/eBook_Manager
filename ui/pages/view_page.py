@@ -129,6 +129,8 @@ def render_view_page(library_service, app_state):
                     with st.spinner("Enriquecendo dados..."):
                         enriched_path = library_service.enrich_csv(selected_file)
                         if enriched_path:
+                            # Show toast notification
+                            st.toast("✅ Enriquecimento concluído!", icon="✅")
                             st.success(f"Dados enriquecidos! Arquivo: {enriched_path}")
                             app_state.set_last_processed_file(enriched_path)
                             # Recarregar a página para mostrar o novo arquivo
