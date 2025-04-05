@@ -4,6 +4,7 @@ import re
 import json
 import time
 import requests
+import hashlib
 from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass
 import pandas as pd
@@ -26,22 +27,16 @@ class BookMetadata:
     cover_link: Optional[str] = None
     match_confidence: float = 0.0
     confidence_factors: Dict[str, float] = None
+    volume_id: Optional[str] = None  # Adicionado para referência do volume
 
 
 class GoogleBooksEnricher(Enricher):
-    """An enricher that uses the Google Books API to enhance ebook metadata.
-    
-    This enricher implements the Enricher interface from the core module and
-    uses Google Books API to retrieve detailed information about books based
-    on their titles and authors.
-    
-    It implements sophisticated searching strategies and confidence scoring
-    to ensure high-quality matches even with imperfect input data.
-    """
+    """An enricher that uses the Google Books API to enhance ebook metadata."""
     
     BASE_URL = "https://www.googleapis.com/books/v1/volumes"
     MAX_RESULTS = 3  # Maximum number of results to consider per book search
     DELAY = 1.0  # Delay between requests to avoid API rate limiting
+    CACHE_EXPIRY = 86400  # Cache expiry in seconds (24 hours)
     
     def __init__(self, api_key: Optional[str] = None):
         """
@@ -49,21 +44,19 @@ class GoogleBooksEnricher(Enricher):
         
         Args:
             api_key: Optional API key for the Google Books API.
-                    While the API can be used without a key for limited requests,
-                    providing a key enables higher request quotas.
         """
         self.api_key = api_key
         self.session = requests.Session()
         self.last_request_time = 0
         self.logger = logging.getLogger(__name__)
+        self.cache = {}  # Simple in-memory cache
+        
+        # Ensure cache directory exists
+        os.makedirs('cache/google_books', exist_ok=True)
     
     def enrich(self, csv_path: str, taxonomy_path: Optional[str] = None) -> Optional[str]:
         """
         Enriches the metadata of ebooks in a CSV file using Google Books API.
-        
-        This method implements the Enricher interface method. It processes a CSV file
-        containing basic ebook information, enriches it with data from Google Books,
-        and saves the results to a new CSV file.
         
         Args:
             csv_path: Path to the CSV file with basic ebook information
@@ -190,6 +183,63 @@ class GoogleBooksEnricher(Enricher):
         if time_since_last < self.DELAY:
             time.sleep(self.DELAY - time_since_last)
         self.last_request_time = time.time()
+
+    def _cache_key(self, query: str, lang_restrict: Optional[str] = None) -> str:
+        """
+        Generate a cache key for a query.
+        
+        Args:
+            query: The search query
+            lang_restrict: Language restriction if any
+            
+        Returns:
+            A hash string to use as cache key
+        """
+        cache_str = f"{query}_{lang_restrict or 'all'}"
+        return hashlib.md5(cache_str.encode()).hexdigest()
+    
+    def _get_from_cache(self, key: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve results from cache if available and not expired.
+        
+        Args:
+            key: Cache key
+            
+        Returns:
+            Cached data or None if not in cache or expired
+        """
+        cache_file = f"cache/google_books/{key}.json"
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    cached_data = json.load(f)
+                
+                # Check if cache is expired
+                if time.time() - cached_data.get('timestamp', 0) < self.CACHE_EXPIRY:
+                    return cached_data.get('data')
+            except Exception as e:
+                self.logger.warning(f"Error reading cache: {str(e)}")
+        
+        return None
+    
+    def _save_to_cache(self, key: str, data: Dict[str, Any]):
+        """
+        Save results to cache.
+        
+        Args:
+            key: Cache key
+            data: Data to cache
+        """
+        cache_file = f"cache/google_books/{key}.json"
+        try:
+            cached_data = {
+                'timestamp': time.time(),
+                'data': data
+            }
+            with open(cache_file, 'w', encoding='utf-8') as f:
+                json.dump(cached_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            self.logger.warning(f"Error writing to cache: {str(e)}")
     
     def _try_search(self, query: str, lang_restrict: Optional[str] = None) -> Optional[BookMetadata]:
         """
@@ -203,6 +253,43 @@ class GoogleBooksEnricher(Enricher):
             BookMetadata object if a match is found, None otherwise
         """
         try:
+            # Check cache first
+            cache_key = self._cache_key(query, lang_restrict)
+            cached_result = self._get_from_cache(cache_key)
+            
+            if cached_result:
+                self.logger.debug(f"Using cached result for: {query}")
+                
+                # If cached result indicates no matches, return None
+                if not cached_result.get('items'):
+                    return None
+                    
+                # Process the cached result
+                best_match = None
+                highest_confidence = 0
+                best_confidence_factors = None
+                
+                for item in cached_result.get('items', []):
+                    volume_info = item.get('volumeInfo', {})
+                    confidence, confidence_factors = self._calculate_match_confidence(
+                        volume_info,
+                        query,
+                        None
+                    )
+                    
+                    if confidence > highest_confidence:
+                        highest_confidence = confidence
+                        best_match = volume_info
+                        best_confidence_factors = confidence_factors
+                
+                if best_match and highest_confidence > 0.3:
+                    metadata = self._parse_volume_info(best_match, highest_confidence, best_confidence_factors)
+                    metadata.volume_id = item.get('id')  # Save volume ID
+                    return metadata
+                
+                return None
+            
+            # Perform the search if not in cache
             params = {
                 'q': query,
                 'maxResults': self.MAX_RESULTS,
@@ -226,6 +313,9 @@ class GoogleBooksEnricher(Enricher):
             response.raise_for_status()
             data = response.json()
             
+            # Cache results
+            self._save_to_cache(cache_key, data)
+            
             total_items = data.get('totalItems', 0)
             self.logger.debug(f"Found {total_items} results")
             
@@ -235,6 +325,7 @@ class GoogleBooksEnricher(Enricher):
             best_match = None
             highest_confidence = 0
             best_confidence_factors = None
+            best_item = None
             
             for item in data.get('items', []):
                 volume_info = item.get('volumeInfo', {})
@@ -250,9 +341,13 @@ class GoogleBooksEnricher(Enricher):
                     highest_confidence = confidence
                     best_match = volume_info
                     best_confidence_factors = confidence_factors
+                    best_item = item
             
             if best_match and highest_confidence > 0.3:
-                return self._parse_volume_info(best_match, highest_confidence, best_confidence_factors)
+                metadata = self._parse_volume_info(best_match, highest_confidence, best_confidence_factors)
+                if best_item:
+                    metadata.volume_id = best_item.get('id')  # Save volume ID
+                return metadata
             
             return None
             
@@ -263,9 +358,6 @@ class GoogleBooksEnricher(Enricher):
     def _search_book(self, title: str, author: Optional[str] = None) -> Optional[BookMetadata]:
         """
         Searches for a book in Google Books using multiple strategies.
-        
-        This method implements a series of search strategies with decreasing specificity
-        to maximize the chance of finding a match.
         
         Args:
             title: The book title
@@ -322,6 +414,157 @@ class GoogleBooksEnricher(Enricher):
             
         self.logger.info(f"No results found for: '{title}'" + (f" by '{author}'" if author else ""))
         return None
+
+    def search_book_multiple_results(self, title: str, author: Optional[str] = None, 
+                                   max_results: int = 3) -> List[BookMetadata]:
+        """
+        Busca um livro no Google Books e retorna múltiplos resultados.
+        
+        Args:
+            title: Título do livro
+            author: Nome do autor (opcional)
+            max_results: Número máximo de resultados a retornar
+            
+        Returns:
+            Lista de objetos BookMetadata
+        """
+        results = []
+        
+        # Limpar entradas
+        title = title.strip() if title else ""
+        author = author.strip() if author and author.strip().lower() != "desconhecido" else None
+        
+        if not title:
+            self.logger.warning("Empty title provided, skipping search")
+            return results
+        
+        # Construir a consulta principal
+        query = f'intitle:"{title}"'
+        if author:
+            query += f' inauthor:"{author}"'
+        
+        try:
+            # Primeiro tentar busca no cache
+            cache_key = self._cache_key(query, None)
+            cached_result = self._get_from_cache(cache_key)
+            
+            data = None
+            if cached_result:
+                self.logger.debug(f"Using cached results for: {query}")
+                data = cached_result
+            else:
+                # Realizar a busca se não estiver em cache
+                params = {
+                    'q': query,
+                    'maxResults': max(10, max_results * 2),  # Solicitar mais para classificação
+                    'printType': 'books'
+                }
+                
+                if self.api_key:
+                    params['key'] = self.api_key
+                    
+                self._throttle_request()
+                response = self.session.get(self.BASE_URL, params=params)
+                response.raise_for_status()
+                data = response.json()
+                
+                # Salvar no cache
+                self._save_to_cache(cache_key, data)
+            
+            # Processar e classificar resultados
+            ranked_results = []
+            items = data.get('items', [])
+            
+            if not items:
+                # Se não houver resultados, tentar uma busca mais genérica
+                query_simple = title
+                if author:
+                    query_simple += f' {author}'
+                
+                cache_key_simple = self._cache_key(query_simple, None)
+                cached_result_simple = self._get_from_cache(cache_key_simple)
+                
+                if cached_result_simple:
+                    data_simple = cached_result_simple
+                else:
+                    params['q'] = query_simple
+                    self._throttle_request()
+                    response = self.session.get(self.BASE_URL, params=params)
+                    response.raise_for_status()
+                    data_simple = response.json()
+                    self._save_to_cache(cache_key_simple, data_simple)
+                
+                items = data_simple.get('items', [])
+            
+            # Processar itens
+            for item in items:
+                volume_info = item.get('volumeInfo', {})
+                confidence, factors = self._calculate_match_confidence(
+                    volume_info,
+                    title,
+                    author
+                )
+                
+                # Incluir apenas resultados com confiança mínima
+                if confidence > 0.2:
+                    metadata = self._parse_volume_info(volume_info, confidence, factors)
+                    metadata.volume_id = item.get('id')  # Save volume ID
+                    ranked_results.append((confidence, metadata))
+            
+            # Ordenar por confiança e pegar os melhores
+            ranked_results.sort(key=lambda x: x[0], reverse=True)
+            results = [metadata for _, metadata in ranked_results[:max_results]]
+            
+            return results
+            
+        except Exception as e:
+            self.logger.warning(f"Error in multiple results search: {str(e)}")
+            return results
+    
+    def get_book_by_id(self, volume_id: str) -> Optional[BookMetadata]:
+        """
+        Obtém um livro específico do Google Books pelo ID do volume.
+        
+        Args:
+            volume_id: ID do volume no Google Books
+            
+        Returns:
+            BookMetadata se encontrado, None caso contrário
+        """
+        try:
+            # Verificar o cache primeiro
+            cache_key = f"volume_{volume_id}"
+            cached_result = self._get_from_cache(cache_key)
+            
+            if cached_result:
+                self.logger.debug(f"Using cached volume: {volume_id}")
+                volume_info = cached_result.get('volumeInfo', {})
+                metadata = self._parse_volume_info(volume_info, 1.0, {})
+                metadata.volume_id = volume_id
+                return metadata
+            
+            # Realizar a busca se não estiver em cache
+            url = f"{self.BASE_URL}/{volume_id}"
+            params = {}
+            if self.api_key:
+                params['key'] = self.api_key
+                
+            self._throttle_request()
+            response = self.session.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Salvar no cache
+            self._save_to_cache(cache_key, data)
+            
+            volume_info = data.get('volumeInfo', {})
+            metadata = self._parse_volume_info(volume_info, 1.0, {})
+            metadata.volume_id = volume_id
+            return metadata
+            
+        except Exception as e:
+            self.logger.warning(f"Error fetching volume {volume_id}: {str(e)}")
+            return None
     
     def _calculate_match_confidence(
         self, 
@@ -330,22 +573,24 @@ class GoogleBooksEnricher(Enricher):
         search_author: Optional[str]
     ) -> Tuple[float, Dict[str, float]]:
         """
-        Calculates confidence score for the match between result and search.
+        Calcula a pontuação de confiança para a correspondência entre o resultado e a busca.
         
         Args:
-            volume_info: The book information from Google Books API
-            search_query: The search query used
-            search_author: The author used in the search (if any)
+            volume_info: A informação do livro da API do Google Books
+            search_query: A consulta de busca usada
+            search_author: O autor usado na busca (se houver)
             
         Returns:
-            Tuple of (confidence_score, confidence_factors)
+            Tupla de (pontuação_de_confiança, fatores_de_confiança)
         """
         confidence_factors = {}
         
         # Get book information
         book_title = volume_info.get('title', '').lower()
         book_subtitle = volume_info.get('subtitle', '').lower()
+        book_authors = [author.lower() for author in volume_info.get('authors', [])]
         search_query = search_query.lower()
+        search_author = search_author.lower() if search_author else None
         
         # Clean text for comparison
         clean_query = re.sub(r'[^\w\s]', ' ', search_query)
@@ -393,6 +638,23 @@ class GoogleBooksEnricher(Enricher):
             confidence_factors['exact_match'] = 0.1
         else:
             confidence_factors['exact_match'] = 0.0
+            
+        # Calculate author match if provided
+        if search_author and book_authors:
+            best_author_match = 0
+            for book_author in book_authors:
+                clean_book_author = re.sub(r'[^\w\s]', ' ', book_author)
+                clean_search_author = re.sub(r'[^\w\s]', ' ', search_author)
+                
+                # Check for exact match or substring match
+                if clean_search_author == clean_book_author:
+                    best_author_match = 1.0
+                    break
+                elif clean_search_author in clean_book_author or clean_book_author in clean_search_author:
+                    author_ratio = min(len(clean_search_author), len(clean_book_author)) / max(len(clean_search_author), len(clean_book_author))
+                    best_author_match = max(best_author_match, author_ratio)
+            
+            confidence_factors['author_match'] = 0.3 * best_author_match
         
         # Calculate total confidence
         total_confidence = sum(confidence_factors.values())

@@ -432,3 +432,170 @@ class LibraryService:
         except Exception as e:
             self.logger.error(f"Error saving enricher configuration: {str(e)}")
             return False
+        
+
+    def manual_search_book(self, title: str, author: Optional[str] = None, max_results: int = 3) -> List[Dict[str, Any]]:
+        """
+        Realiza uma busca manual por um livro no Google Books.
+        
+        Args:
+            title: Título do livro a ser buscado
+            author: Nome do autor (opcional)
+            max_results: Número máximo de resultados a retornar
+            
+        Returns:
+            Lista de dicionários com metadados de livros
+        """
+        try:
+            # Verificar se o GoogleBooksEnricher está disponível
+            if 'google_books' not in self.enrich_service.enricher_registry:
+                self.logger.error("Google Books enricher não disponível")
+                return []
+                
+            enricher = self.enrich_service.enricher_registry['google_books']
+            
+            # Buscar livro
+            results = enricher.search_book_multiple_results(title, author, max_results)
+            
+            # Converter objetos BookMetadata para dicionários
+            result_dicts = []
+            for book in results:
+                result_dicts.append({
+                    'title': book.title,
+                    'subtitle': book.subtitle,
+                    'authors': ', '.join(book.authors) if book.authors else '',
+                    'publisher': book.publisher,
+                    'published_date': book.published_date,
+                    'isbn_10': book.isbn_10,
+                    'isbn_13': book.isbn_13,
+                    'page_count': book.page_count,
+                    'categories': ', '.join(book.categories) if book.categories else '',
+                    'language': book.language,
+                    'preview_link': book.preview_link,
+                    'cover_link': book.cover_link,
+                    'confidence': book.match_confidence,
+                    'volume_id': book.volume_id  # Incluir ID do volume
+                })
+                
+            return result_dicts
+        except Exception as e:
+            self.logger.error(f"Erro na busca manual de livro: {str(e)}")
+            return []
+
+    def get_book_by_id(self, volume_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Obtém metadados de um livro específico do Google Books pelo ID.
+        
+        Args:
+            volume_id: ID do volume no Google Books
+            
+        Returns:
+            Dicionário com metadados do livro ou None se não encontrado
+        """
+        try:
+            # Verificar se o GoogleBooksEnricher está disponível
+            if 'google_books' not in self.enrich_service.enricher_registry:
+                self.logger.error("Google Books enricher não disponível")
+                return None
+                
+            enricher = self.enrich_service.enricher_registry['google_books']
+            
+            # Obter livro pelo ID
+            book = enricher.get_book_by_id(volume_id)
+            if not book:
+                return None
+                
+            # Converter objeto BookMetadata para dicionário
+            return {
+                'title': book.title,
+                'subtitle': book.subtitle,
+                'authors': ', '.join(book.authors) if book.authors else '',
+                'publisher': book.publisher,
+                'published_date': book.published_date,
+                'isbn_10': book.isbn_10,
+                'isbn_13': book.isbn_13,
+                'page_count': book.page_count,
+                'categories': ', '.join(book.categories) if book.categories else '',
+                'language': book.language,
+                'preview_link': book.preview_link,
+                'cover_link': book.cover_link,
+                'confidence': book.match_confidence,
+                'volume_id': book.volume_id
+            }
+        except Exception as e:
+            self.logger.error(f"Erro ao obter livro por ID: {str(e)}")
+            return None
+
+    def update_book_metadata(self, csv_path: str, row_index: int, metadata: Dict[str, Any]) -> bool:
+        """
+        Atualiza os metadados de um livro específico em um arquivo CSV.
+        
+        Args:
+            csv_path: Caminho para o arquivo CSV
+            row_index: Índice da linha a ser atualizada
+            metadata: Novos metadados a serem aplicados
+            
+        Returns:
+            True se a atualização foi bem-sucedida
+        """
+        try:
+            # Ler o arquivo CSV
+            df = pd.read_csv(csv_path)
+            
+            if row_index < 0 or row_index >= len(df):
+                self.logger.error(f"Índice de linha inválido: {row_index}")
+                return False
+                
+            # Mapear campos de metadados para colunas do DataFrame
+            field_mappings = {
+                'title': 'GB_Titulo',
+                'subtitle': 'GB_Subtitulo',
+                'authors': 'GB_Autores',
+                'publisher': 'GB_Editora',
+                'published_date': 'GB_Data_Publicacao',
+                'isbn_10': 'GB_ISBN10',
+                'isbn_13': 'GB_ISBN13',
+                'page_count': 'GB_Paginas',
+                'categories': 'GB_Categorias',
+                'language': 'GB_Idioma',
+                'preview_link': 'GB_Preview_Link',
+                'cover_link': 'GB_Capa_Link',
+                'confidence': 'GB_Confianca_Match',
+                'volume_id': 'GB_Volume_ID'
+            }
+            
+            # Atualizar campos
+            for src_field, dest_field in field_mappings.items():
+                if src_field in metadata and metadata[src_field] is not None:
+                    # Garantir que a coluna existe
+                    if dest_field not in df.columns:
+                        df[dest_field] = None
+                        
+                    df.at[row_index, dest_field] = metadata[src_field]
+            
+            # Marcar como busca manual
+            if 'GB_Status_Busca' not in df.columns:
+                df['GB_Status_Busca'] = None
+            df.at[row_index, 'GB_Status_Busca'] = 'Manual'
+            
+            # Atualizar também campos extraídos para compatibilidade
+            if 'Titulo_Extraido' in df.columns and 'title' in metadata:
+                df.at[row_index, 'Titulo_Extraido'] = metadata['title']
+            if 'Autor_Extraido' in df.columns and 'authors' in metadata:
+                df.at[row_index, 'Autor_Extraido'] = metadata['authors']
+            
+            # Adicionar timestamp de atualização
+            if 'GB_Atualizado_Em' not in df.columns:
+                df['GB_Atualizado_Em'] = None
+            
+            from datetime import datetime
+            df.at[row_index, 'GB_Atualizado_Em'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Salvar o CSV atualizado
+            df.to_csv(csv_path, index=False)
+            
+            self.logger.info(f"Metadados atualizados para linha {row_index} em {csv_path}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Erro ao atualizar metadados do livro: {str(e)}")
+            return False

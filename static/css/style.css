@@ -46,3 +46,62 @@
 .info-card p, .info-card h3 {
     color: #212529;  /* Dark text color for contrast */
 }
+
+/* Adicionar ao arquivo CSS existente */
+
+/* Estilos específicos para a busca manual */
+.search-result-card {
+    background-color: #f8f9fa;
+    border-left: 5px solid #0d6efd;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 15px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.confidence-high {
+    color: #198754;
+    font-weight: bold;
+}
+
+.confidence-medium {
+    color: #fd7e14;
+    font-weight: bold;
+}
+
+.confidence-low {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+.book-cover {
+    max-width: 150px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.search-form {
+    background-color: #f0f0f0;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+
+.book-info {
+    border-left: 3px solid #0d6efd;
+    padding-left: 10px;
+    margin-bottom: 15px;
+}
+
+.manual-search-section {
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.result-divider {
+    margin: 20px 0;
+    border-top: 1px solid #dee2e6;
+}
