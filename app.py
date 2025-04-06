@@ -146,6 +146,9 @@ if st.sidebar.button("🏠 Início"):
 if st.sidebar.button("⚙️ Configurar Fontes"):
     app_state.change_page("setup")
     st.rerun()
+if st.sidebar.button("⚙️ Configurar Notion"):
+    app_state.change_page("notion_config")
+    st.rerun()
 if st.sidebar.button("🔍 Escanear Fontes"):
     app_state.change_page("scan")
     st.rerun()

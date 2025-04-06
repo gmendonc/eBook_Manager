@@ -115,8 +115,8 @@ def render_workflow_page(library_service, app_state):
             
             if export_notion:
                 notion_status.markdown("🔄 **Exportando para o Notion...**")
-                
-                success = library_service.export_to_notion(enriched_path)
+                config = load_notion_config()  # Carregar configurações salvas
+                success = library_service.export_to_notion(enriched_path, config)
                 if success:
                     notion_status.markdown("✅ **Exportação para o Notion concluída.**")
                 else:

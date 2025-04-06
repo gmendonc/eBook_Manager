@@ -13,6 +13,7 @@ class ExportService:
             exporter: Implementação do Exporter (opcional)
         """
         self.exporter = exporter
+        self.exporter_config = {}  # Configurações específicas
         self.logger = logging.getLogger(__name__)
     
     def set_exporter(self, exporter: Exporter):
@@ -33,9 +34,14 @@ class ExportService:
         if not self.exporter:
             self.logger.error("Nenhum exportador configurado")
             return False
+        
+        # Combinar configurações salvas com as fornecidas
+        export_config = {**self.exporter_config}
+        if config:
+            export_config.update(config)
             
         try:
-            return self.exporter.export(csv_path, config)
+            return self.exporter.export(csv_path, export_config)
         except Exception as e:
             self.logger.error(f"Erro ao exportar dados: {str(e)}")
             return False

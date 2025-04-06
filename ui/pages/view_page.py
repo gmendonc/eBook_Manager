@@ -4,6 +4,15 @@ import pandas as pd
 import re
 from datetime import datetime
 
+from utils.notion_utils import (
+    load_notion_config, 
+    save_notion_config, 
+    test_notion_connection,
+    load_export_history,
+    add_export_to_history,
+    configure_notion_exporter
+)
+
 def init_manual_search_state():
     """Inicializa os estados relacionados à busca manual."""
     if 'manual_search_mode' not in st.session_state:
@@ -353,7 +362,8 @@ def render_view_page(library_service, app_state):
         with col2:
             if st.button("Exportar para Notion"):
                 with st.spinner("Exportando para Notion..."):
-                    success = library_service.export_to_notion(selected_file)
+                    config = load_notion_config()  # Carregar configurações salvas
+                    success = library_service.export_to_notion(selected_file, config)
                     if success:
                         st.success("Exportação para Notion concluída com sucesso!")
                     else:

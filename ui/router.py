@@ -5,11 +5,14 @@ from ui.pages.scan_page import render_scan_page
 from ui.pages.view_page import render_view_page
 from ui.pages.dashboard_page import render_dashboard_page
 from ui.pages.workflow_page import render_workflow_page
+from ui.pages.notion_config_page import render_notion_config_page
+
 
 # Page routing dictionary
 page_routes = {
     "home": render_home_page,
     "setup": render_setup_page,
+    "notion_config": render_notion_config_page,
     "scan": render_scan_page,
     "view": render_view_page,
     "dashboard": render_dashboard_page,

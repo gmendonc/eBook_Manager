@@ -44,6 +44,10 @@ class NotionExporter(Exporter):
                 self.headers["Authorization"] = f"Bearer {self.token}"
             if 'database_id' in config:
                 self.database_id = config['database_id']
+            # Aplicar configurações avançadas
+            self.include_cover = config.get("include_cover", True)
+            self.include_description = config.get("include_description", True)
+            self.default_reading_status = config.get("default_reading_status", "Não Lido")
         
         if not self.token or not self.database_id:
             self.logger.error("Token ou ID da base de dados do Notion não configurados")
@@ -55,71 +59,9 @@ class NotionExporter(Exporter):
             self.logger.error(f"Erro ao exportar para o Notion: {str(e)}")
             return False
     
-    def create_database(self, page_id: str, title: str = "Biblioteca de Ebooks") -> Optional[str]:
-        """
-        Cria uma nova base de dados de ebooks no Notion.
-        
-        Args:
-            page_id: ID da página onde a base de dados será criada
-            title: Título da base de dados
-            
-        Returns:
-            ID da base de dados criada ou None em caso de erro
-        """
-        url = f"{self.base_url}/databases"
-        
-        payload = {
-            "parent": {"page_id": page_id},
-            "title": [{"type": "text", "text": {"content": title}}],
-            "properties": {
-                "Título": {"title": {}},
-                "Autor": {"rich_text": {}},
-                "Formato": {"select": {}},
-                "Tamanho (MB)": {"number": {}},
-                "Data de Modificação": {"date": {}},
-                "Caminho": {"url": {}},
-                "Status de Leitura": {
-                    "select": {
-                        "options": [
-                            {"name": "Não Lido", "color": "gray"},
-                            {"name": "Lendo", "color": "blue"},
-                            {"name": "Lido", "color": "green"},
-                            {"name": "Para Ler", "color": "yellow"},
-                            {"name": "Referência", "color": "purple"}
-                        ]
-                    }
-                },
-                "Temas": {"multi_select": {}},
-                "Prioridade": {
-                    "select": {
-                        "options": [
-                            {"name": "Baixa", "color": "gray"},
-                            {"name": "Média", "color": "yellow"},
-                            {"name": "Alta", "color": "red"}
-                        ]
-                    }
-                },
-                "Notas": {"rich_text": {}}
-            }
-        }
-        
-        try:
-            response = requests.post(url, headers=self.headers, json=payload)
-            response.raise_for_status()
-            result = response.json()
-            self.database_id = result["id"]
-            self.logger.info(f"Base de dados criada com sucesso: {self.database_id}")
-            return self.database_id
-            
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Erro ao criar base de dados: {str(e)}")
-            if hasattr(response, 'status_code') and response.status_code == 400:
-                self.logger.error(f"Detalhes do erro: {response.text}")
-            return None
-    
     def add_ebook(self, ebook_data: Dict[str, Any]) -> Optional[str]:
         """
-        Adiciona um ebook à base de dados do Notion.
+        Adiciona um ebook à base de dados do Notion com capa como ícone e conteúdo enriquecido.
         
         Args:
             ebook_data: Dicionário com dados do ebook
@@ -133,10 +75,19 @@ class NotionExporter(Exporter):
             
         url = f"{self.base_url}/pages"
         
-        # Extrair dados
-        titulo = ebook_data.get("Titulo_Extraido", "") or ebook_data.get("Nome", "").split('.')[0]
-        autor = ebook_data.get("Autor_Extraido", "") or "Desconhecido"
+        # Extrair dados com prioridade para Google Books
+        titulo = (ebook_data.get("GB_Titulo", "") or 
+                  ebook_data.get("Titulo_Extraido", "") or 
+                  ebook_data.get("Nome", "").split('.')[0])
+                  
+        autor = (ebook_data.get("GB_Autores", "") or 
+                 ebook_data.get("Autor_Extraido", "") or 
+                 "Desconhecido")
+                 
         formato = ebook_data.get("Formato", "Desconhecido")
+        
+        # Obter URL da capa se disponível
+        cover_url = ebook_data.get("GB_Capa_Link", None)
         
         # Preparar caminho como URL
         caminho = ebook_data.get("Caminho", "")
@@ -155,7 +106,7 @@ class NotionExporter(Exporter):
             except:
                 date_formatted = None
         
-        # Preparar payload
+        # Preparar payload básico
         payload = {
             "parent": {"database_id": self.database_id},
             "properties": {
@@ -188,6 +139,15 @@ class NotionExporter(Exporter):
             }
         }
         
+        # Adicionar ícone de capa se disponível
+        if cover_url:
+            payload["icon"] = {
+                "type": "external",
+                "external": {
+                    "url": cover_url
+                }
+            }
+        
         # Adicionar propriedades opcionais
         if "Tamanho(MB)" in ebook_data:
             try:
@@ -202,25 +162,72 @@ class NotionExporter(Exporter):
         if url_value:
             payload["properties"]["Caminho"] = {"url": url_value}
         
-        # Adicionar temas se disponíveis
-        if "Temas" in ebook_data and ebook_data["Temas"]:
-            temas = []
+        # Adicionar propriedades do Google Books quando disponíveis
+        if "GB_Editora" in ebook_data and ebook_data["GB_Editora"]:
+            payload["properties"]["Editora"] = {
+                "rich_text": [{"type": "text", "text": {"content": ebook_data["GB_Editora"]}}]
+            }
+            
+        if "GB_Data_Publicacao" in ebook_data and ebook_data["GB_Data_Publicacao"]:
+            try:
+                # Tentar converter para data Notion
+                pub_date = ebook_data["GB_Data_Publicacao"]
+                # Se for apenas ano, adicionar mês e dia
+                if len(pub_date) == 4 and pub_date.isdigit():
+                    pub_date = f"{pub_date}-01-01"
+                
+                payload["properties"]["Data de Publicação"] = {"date": {"start": pub_date}}
+            except:
+                # Em caso de erro, adicionar como texto
+                payload["properties"]["Ano de Publicação"] = {
+                    "rich_text": [{"type": "text", "text": {"content": ebook_data["GB_Data_Publicacao"]}}]
+                }
+        
+        if "GB_ISBN13" in ebook_data and ebook_data["GB_ISBN13"]:
+            payload["properties"]["ISBN"] = {
+                "rich_text": [{"type": "text", "text": {"content": ebook_data["GB_ISBN13"]}}]
+            }
+        elif "GB_ISBN10" in ebook_data and ebook_data["GB_ISBN10"]:
+            payload["properties"]["ISBN"] = {
+                "rich_text": [{"type": "text", "text": {"content": ebook_data["GB_ISBN10"]}}]
+            }
+            
+        if "GB_Paginas" in ebook_data and ebook_data["GB_Paginas"]:
+            try:
+                payload["properties"]["Páginas"] = {"number": int(ebook_data["GB_Paginas"])}
+            except:
+                pass
+        
+        # Adicionar temas/categorias
+        temas = []
+        # Primeiro verificar categorias do Google Books
+        if "GB_Categorias" in ebook_data and ebook_data["GB_Categorias"]:
+            for tema in ebook_data["GB_Categorias"].split(','):
+                tema = tema.strip()
+                if tema:
+                    temas.append({"name": tema})
+        # Depois verificar temas extraídos normalmente
+        elif "Temas" in ebook_data and ebook_data["Temas"]:
             for tema in ebook_data["Temas"].split(','):
                 tema = tema.strip()
                 if tema:
                     temas.append({"name": tema})
-            
-            if temas:
-                payload["properties"]["Temas"] = {"multi_select": temas}
+        
+        if temas:
+            payload["properties"]["Temas"] = {"multi_select": temas}
         
         try:
+            # Criar a página básica
             response = requests.post(url, headers=self.headers, json=payload)
             response.raise_for_status()
             result = response.json()
             page_id = result["id"]
             self.logger.info(f"Ebook adicionado com sucesso: {titulo}")
-            return page_id
             
+            # Adicionar conteúdo à página
+            self._add_page_content(page_id, ebook_data)
+            
+            return page_id
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Erro ao adicionar ebook '{titulo}': {str(e)}")
             if hasattr(response, 'text'):
