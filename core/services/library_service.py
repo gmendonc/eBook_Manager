@@ -255,16 +255,19 @@ class LibraryService:
     
     def export_to_notion(self, csv_path: str, config: Optional[Dict[str, Any]] = None) -> bool:
         """
-        Exporta dados para o Notion.
+        Exports data to Notion.
         
         Args:
-            csv_path: Caminho para o arquivo CSV
-            config: Configurações específicas para o Notion
+            csv_path: Path to the CSV file
+            config: Configuration for Notion export
             
         Returns:
-            True se a exportação foi bem-sucedida, False caso contrário
+            True if export was successful
         """
-        return self.export_service.export(csv_path, config)
+        from adapters.notion.factory import NotionExporterFactory
+    
+        exporter = NotionExporterFactory.create_exporter(config or {})
+        return exporter.export(csv_path, config)
     
     def merge_libraries(self, csv_paths: List[str], output_path: Optional[str] = None) -> Optional[str]:
         """

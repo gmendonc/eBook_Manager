@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import re
 from datetime import datetime
+import logging
 
 from utils.notion_utils import (
     load_notion_config, 
@@ -12,6 +13,7 @@ from utils.notion_utils import (
     add_export_to_history,
     configure_notion_exporter
 )
+from ui.components.notion_export_component import integrate_with_view_page
 
 def init_manual_search_state():
     """Inicializa os estados relacionados à busca manual."""
@@ -222,6 +224,9 @@ def render_manual_search_section(df, selected_file, library_service):
 
 def render_view_page(library_service, app_state):
     """Renderiza a página de visualização da biblioteca."""
+    # Configuração do logger
+    logger = logging.getLogger(__name__)
+    
     st.markdown('<div class="main-header">📋 Visualizar Biblioteca</div>', unsafe_allow_html=True)
     
     # Encontrar arquivos CSV
@@ -360,14 +365,101 @@ def render_view_page(library_service, app_state):
                         st.error("Erro ao enriquecer dados.")
         
         with col2:
+            # 1. Adicionar variável de controle no session_state se não existir
+            if "show_notion_export_panel" not in st.session_state:
+                st.session_state.show_notion_export_panel = False
             if st.button("Exportar para Notion"):
-                with st.spinner("Exportando para Notion..."):
-                    config = load_notion_config()  # Carregar configurações salvas
-                    success = library_service.export_to_notion(selected_file, config)
-                    if success:
-                        st.success("Exportação para Notion concluída com sucesso!")
+                st.write("DEBUG: Botão Exportar para Notion clicado")
+                print("DEBUG: Botão Exportar para Notion clicado") # Print no console
+                logger.info("Iniciando exportação para o Notion.")
+                st.session_state.show_notion_export_panel = True
+            # 3. Mostrar o painel de exportação se o estado indicar que deve ser mostrado
+            if st.session_state.show_notion_export_panel:
+                
+                # Importar o repositório de configuração
+                from core.repositories.notion_config_repository import NotionConfigRepository
+        
+                # Carregar a configuração do repositório
+                config = NotionConfigRepository.load_config()
+                print(f"DEBUG: Configuração carregada: {config}")
+        
+                # Verificar se temos configuração suficiente
+                has_valid_config = (
+                    config.get("token") and 
+                    (config.get("database_id") or config.get("page_id"))
+                )
+
+                with st.expander("Exportação para o Notion", expanded=True):
+                    # Botão para fechar o painel
+                    if st.button("× Fechar", key="close_notion_panel"):
+                        st.session_state.show_notion_export_panel = False
+                        st.rerun()
+        
+                    if not has_valid_config:
+                        st.warning("Integração com o Notion não configurada. Por favor, configure primeiro.")
+            
+                        # Redirecionar para a página de configuração do Notion
+                        if st.button("Configurar Notion"):
+                            app_state.change_page("notion_config")
+                            st.rerun()
                     else:
-                        st.error("Erro ao exportar para Notion.")
+                        # Mostrar um resumo da configuração atual
+                        st.write("**Configuração atual:**")
+                        token = config.get("token", "")
+                        masked_token = f"{token[:4]}...{token[-4:]}"
+                        st.write(f"- Token: {masked_token}")
+                
+                        if config.get("database_id"):
+                            st.write(f"- Base de dados: {config.get('database_id')}")
+                        elif config.get("page_id"):
+                            st.write(f"- Página para criar base: {config.get('page_id')}")
+                            st.write(f"- Nome da base: {config.get('database_name', 'Biblioteca de Ebooks')}")
+
+                        print("DEBUG: Pronto para iniciar exportação") # Print no console
+                        # Botão para iniciar a exportação
+                        if st.button("Iniciar Exportação", key="start_export"):
+                            logger.info("Botão de iniciar exportação clicado")
+                            print("DEBUG: Botão iniciar exportação clicado") # Print no console
+                            with st.spinner("Exportando para Notion..."):
+                                # Preparar configuração completa
+                                export_config = {
+                                    "token": config.get("token", ""),
+                                    "database_id": config.get("database_id", ""),
+                                    "page_id": config.get("page_id", ""),
+                                    "database_name": config.get("database_name", "Biblioteca de Ebooks"),
+                                    "create_database_if_not_exists": bool(config.get("page_id"))
+                                }
+
+                                # Log antes de chamar a exportação
+                                print(f"DEBUG: Chamando export_to_notion com config: {export_config}")
+
+                                try:                    
+                                    # Executar a exportação
+                                    success = library_service.export_to_notion(selected_file, export_config)
+                        
+                                    if success:
+                                        st.success("Exportação para Notion concluída com sucesso!")
+                                        logger.info("Exportação para o Notion concluída com sucesso.")
+                                        print("DEBUG: Exportação para o Notion concluída com sucesso.") # Print no console
+                                    else:
+                                        st.error("Erro ao exportar para Notion. Verifique os logs para mais detalhes.")
+                                        logger.error("Erro durante a exportação para o Notion.")
+                                        print("DEBUG: Erro durante a exportação para o Notion.") # Print no console
+                                        import traceback
+                                        logger.debug("Detalhes do erro:", exc_info=True)
+                            
+                                        # Mostrar dicas para solução de problemas
+                                        st.info("""
+                                        **Dicas para solução de problemas:**
+                                        1. Verifique se o token de integração está correto
+                                        2. Confirme que a página/base de dados foi compartilhada com a integração
+                                        3. Verifique se a base de dados tem a estrutura correta
+                                        4. Confira os logs para detalhes do erro
+                                        """)
+                                except Exception as e:
+                                    print(f"DEBUG ERROR: {str(e)}")
+                                    st.error(f"Erro durante a exportação: {str(e)}")
+                        print("DEBUG: Saída da execução do botão de exportação") # Print no console
         
         with col3:
             if st.button("Ver Dashboard"):
