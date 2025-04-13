@@ -11,8 +11,8 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("ebook_manager.log"),
-        logging.StreamHandler()
+        logging.FileHandler("ebook_manager.log", encoding='utf-8'),  # Add encoding='utf-8'
+        logging.StreamHandler()  # Console handler
     ]
 )
 logger = logging.getLogger(__name__)

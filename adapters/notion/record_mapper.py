@@ -2,7 +2,7 @@
 import logging
 import re
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 from core.interfaces.notion_record_mapper import NotionRecordMapper
 
@@ -92,6 +92,186 @@ class GoogleBooksNotionRecordMapper(NotionRecordMapper):
             properties["Topics"] = self._format_multi_select_property(topics)
         
         return properties
+    
+    def map_to_notion_properties_and_icon(self, record: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        """
+        Maps a record to Notion properties, icon, and cover.
+        
+        Args:
+            record: Record data from CSV
+            
+        Returns:
+            Tuple of (properties, icon, cover)
+        """
+        # Get properties from existing method
+        properties = self.map_to_notion_properties(record)
+        
+        # Extract URL of the cover for icon and cover image
+        cover_url = self._get_value_by_priority(record, ["GB_Capa_Link"], None)
+        
+        icon = None
+        cover = None
+        
+        if cover_url:
+            # Set icon (small image next to title)
+            icon = {
+                "type": "external",
+                "external": {
+                    "url": cover_url
+                }
+            }
+            
+            # Set cover (banner image at top of page)
+            cover = {
+                "type": "external",
+                "external": {
+                    "url": cover_url
+                }
+            }
+            
+            self.logger.debug(f"Set cover image as icon and page cover: {cover_url}")
+        
+        return properties, icon, cover
+    
+    def create_page_content_blocks(self, record: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Creates content blocks for a Notion page.
+        
+        Args:
+            record: Record data from CSV
+            
+        Returns:
+            List of block objects
+        """
+        blocks = []
+        
+        # Título como cabeçalho H1
+        title = self._get_value_by_priority(record, ["GB_Titulo", "Titulo_Extraido", "Nome"], "")
+        if title:
+            blocks.append({
+                "object": "block",
+                "type": "heading_1",
+                "heading_1": {
+                    "rich_text": [{"type": "text", "text": {"content": title}}]
+                }
+            })
+            self.logger.debug(f"Added title header: {title}")
+        
+        # Bloco vazio para espaçamento
+        blocks.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {"rich_text": []}
+        })
+        
+        # Imagem de capa (em tamanho maior)
+        # Usar bookmark em vez de imagem direta
+        cover_url = self._get_value_by_priority(record, ["GB_Capa_Link"], None)
+        preview_link = self._get_value_by_priority(record, ["GB_Preview_Link"], None)
+
+        # Preferir o link de prévia se disponível (que normalmente renderiza uma capa)
+        if preview_link:
+            blocks.append({
+                "object": "block",
+                "type": "bookmark",
+                "bookmark": {
+                    "url": preview_link
+                }
+            })
+            self.logger.debug(f"Added preview bookmark: {preview_link}")
+        # Como fallback, tentar usar a URL da capa
+        elif cover_url:
+            blocks.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [
+                        {"type": "text", "text": {"content": "Capa: "}, "annotations": {"bold": True}},
+                        {"type": "text", "text": {"content": "Ver imagem", "link": {"url": cover_url}}}
+                    ]
+                }
+            })
+            self.logger.debug(f"Added cover image link: {cover_url}")
+        
+        # Bloco vazio para espaçamento
+        blocks.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {"rich_text": []}
+        })
+        
+        # Descrição/sumário do livro
+        description = self._get_value_by_priority(record, ["GB_Descricao"], None)
+        if description:
+             # Add this code to split long descriptions into chunks of 2000 chars max
+            if len(description) > 2000:
+                # Split description into chunks of 2000 chars or less
+                chunks = [description[i:i+1900] for i in range(0, len(description), 1900)]
+                
+                self.logger.debug(f"Description length {len(description)} chars - splitting into {len(chunks)} blocks")
+                
+                for i, chunk in enumerate(chunks):
+                    # Add ellipsis for continuity
+                    suffix = "..." if i < len(chunks) - 1 else ""
+                    prefix = "..." if i > 0 else ""
+                    
+                    blocks.append({
+                        "object": "block",
+                        "type": "paragraph",
+                        "paragraph": {
+                            "rich_text": [{
+                                "type": "text", 
+                                "text": {"content": prefix + chunk + suffix}
+                            }]
+                        }
+                    })
+                self.logger.debug(f"Added book description in {len(chunks)} chunks")
+            else:
+                # Original code for descriptions under 2000 chars
+                blocks.append({
+                    "object": "block",
+                    "type": "paragraph",
+                    "paragraph": {
+                        "rich_text": [{"type": "text", "text": {"content": description}}]
+                    }
+                })
+                self.logger.debug(f"Added book description ({len(description)} chars)")
+        else:
+            blocks.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{"type": "text", "text": {"content": "Sem descrição disponível."}}]
+                }
+            })
+            self.logger.debug("No description available, added placeholder text")
+        
+        # Informações adicionais
+        if "GB_Editora" in record and record["GB_Editora"]:
+            blocks.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [
+                        {"type": "text", "text": {"content": "Editora: "}, "annotations": {"bold": True}},
+                        {"type": "text", "text": {"content": record["GB_Editora"]}}
+                    ]
+                }
+            })
+        
+        if "GB_Data_Publicacao" in record and record["GB_Data_Publicacao"]:
+            blocks.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [
+                        {"type": "text", "text": {"content": "Publicação: "}, "annotations": {"bold": True}},
+                        {"type": "text", "text": {"content": record["GB_Data_Publicacao"]}}
+                    ]
+                }
+            })
+        
+        return blocks
     
     def get_property_maps(self) -> List[Dict[str, Any]]:
         """

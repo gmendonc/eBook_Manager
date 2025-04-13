@@ -75,13 +75,17 @@ class HttpNotionApiClient(NotionApiClient):
         
         return self._make_request("POST", url, json_data=payload)
     
-    def create_page(self, database_id: str, properties: Dict[str, Any]) -> Dict[str, Any]:
+    def create_page(self, database_id: str, properties: Dict[str, Any], 
+                icon: Optional[Dict[str, Any]] = None,
+                cover: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Creates a new page in a database.
         
         Args:
             database_id: Database ID
             properties: Page properties
+            icon: Optional icon configuration
+            cover: Optional cover configuration
             
         Returns:
             Created page object
@@ -96,7 +100,37 @@ class HttpNotionApiClient(NotionApiClient):
             "properties": properties
         }
         
+        # Add icon if provided
+        if icon:
+            payload["icon"] = icon
+        
+        # Add cover if provided
+        if cover:
+            payload["cover"] = cover
+        
         return self._make_request("POST", url, json_data=payload)
+    
+    def append_blocks_to_page(self, page_id: str, blocks: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Appends blocks to a page.
+
+        Args:
+            page_id: Page ID
+            blocks: List of block objects
+
+        Returns:
+            Response from the API
+
+        Raises:
+            NotionApiError: If API request fails
+        """
+        url = f"{self.config.base_url}/blocks/{page_id}/children"
+
+        payload = {
+            "children": blocks
+        }
+    
+        return self._make_request("PATCH", url, json_data=payload)
     
     def get_users(self) -> List[Dict[str, Any]]:
         """

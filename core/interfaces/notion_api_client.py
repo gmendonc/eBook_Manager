@@ -40,13 +40,17 @@ class NotionApiClient(ABC):
         pass
     
     @abstractmethod
-    def create_page(self, database_id: str, properties: Dict[str, Any]) -> Dict[str, Any]:
+    def create_page(self, database_id: str, properties: Dict[str, Any], 
+                    icon: Optional[Dict[str, Any]] = None,
+                    cover: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Creates a new page in a database.
         
         Args:
             database_id: Database ID
             properties: Page properties
+            icon: Optional icon configuration
+            cover: Optional cover configuration
             
         Returns:
             Created page object
@@ -55,7 +59,21 @@ class NotionApiClient(ABC):
             NotionApiError: If API request fails
         """
         pass
+
+    @abstractmethod
+    def append_blocks_to_page(self, page_id: str, blocks: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Appends blocks to a page.
     
+        Args:
+            page_id: Page ID
+            blocks: List of block objects
+        
+        Returns:
+            Response from the API
+        """
+        pass
+
     @abstractmethod
     def get_users(self) -> List[Dict[str, Any]]:
         """
@@ -68,7 +86,7 @@ class NotionApiClient(ABC):
             NotionApiError: If API request fails
         """
         pass
-    
+
     @abstractmethod
     def get_page(self, page_id: str) -> Dict[str, Any]:
         """
