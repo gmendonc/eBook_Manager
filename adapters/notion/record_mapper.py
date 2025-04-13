@@ -93,33 +93,45 @@ class GoogleBooksNotionRecordMapper(NotionRecordMapper):
         
         return properties
     
-    def map_to_notion_properties_and_icon(self, record: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+    def map_to_notion_properties_and_icon(self, record: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
         """
-        Maps a record to Notion properties and icon.
-
+        Maps a record to Notion properties, icon, and cover.
+        
         Args:
             record: Record data from CSV
-
+            
         Returns:
-            Tuple of (properties, icon)
+            Tuple of (properties, icon, cover)
         """
-        # Obter propriedades normais
+        # Get properties from existing method
         properties = self.map_to_notion_properties(record)
-    
-        # Extrair URL da capa para o ícone
+        
+        # Extract URL of the cover for icon and cover image
         cover_url = self._get_value_by_priority(record, ["GB_Capa_Link"], None)
+        
         icon = None
-
+        cover = None
+        
         if cover_url:
+            # Set icon (small image next to title)
             icon = {
                 "type": "external",
                 "external": {
                     "url": cover_url
                 }
             }
-            self.logger.debug(f"Set cover image as icon: {cover_url}")
-
-        return properties, icon
+            
+            # Set cover (banner image at top of page)
+            cover = {
+                "type": "external",
+                "external": {
+                    "url": cover_url
+                }
+            }
+            
+            self.logger.debug(f"Set cover image as icon and page cover: {cover_url}")
+        
+        return properties, icon, cover
     
     def create_page_content_blocks(self, record: Dict[str, Any]) -> List[Dict[str, Any]]:
         """

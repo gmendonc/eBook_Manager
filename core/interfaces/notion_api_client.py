@@ -41,7 +41,8 @@ class NotionApiClient(ABC):
     
     @abstractmethod
     def create_page(self, database_id: str, properties: Dict[str, Any], 
-                    icon: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                    icon: Optional[Dict[str, Any]] = None,
+                    cover: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Creates a new page in a database.
         
@@ -49,6 +50,7 @@ class NotionApiClient(ABC):
             database_id: Database ID
             properties: Page properties
             icon: Optional icon configuration
+            cover: Optional cover configuration
             
         Returns:
             Created page object

@@ -74,11 +74,11 @@ class NotionExportService:
 
                 for i, record in enumerate(reader):
                     try:
-                        # Map record to Notion properties and icon
-                        properties, icon = self.record_mapper.map_to_notion_properties_and_icon(record)
-
-                        # Create page in Notion with icon
-                        page = self.api_client.create_page(database_id, properties, icon)
+                        # Map record to Notion properties, icon, and cover
+                        properties, icon, cover = self.record_mapper.map_to_notion_properties_and_icon(record)
+                        
+                        # Create page in Notion with icon and cover
+                        page = self.api_client.create_page(database_id, properties, icon, cover)
                         page_id = page["id"]
                         self.logger.debug(f"Created page {page_id} for record {i+1}")
 
