@@ -44,13 +44,13 @@ class NotionExportService:
     def export_csv_to_notion(self, csv_path: str) -> Tuple[bool, int, int, List[str]]:
         """
         Exports data from a CSV file to Notion.
-        
+
         Args:
             csv_path: Path to CSV file
-            
+
         Returns:
             Tuple of (success, success_count, error_count, error_messages)
-            
+
         Raises:
             NotionExportError: If export fails
         """
@@ -58,47 +58,82 @@ class NotionExportService:
         database_id = self._ensure_database_exists()
         if not database_id:
             raise NotionExportError("Failed to get or create a valid database")
-        
+
         # Process the CSV file
         try:
             success_count = 0
             error_count = 0
             error_messages = []
-            
+
             # Read CSV and count rows
             total_rows = sum(1 for _ in open(csv_path, 'r', encoding='utf-8')) - 1  # -1 for header
             self.logger.info(f"Starting export of {total_rows} records from {csv_path}")
-            
+
             with open(csv_path, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
-                
+
                 for i, record in enumerate(reader):
                     try:
-                        # Map record to Notion properties
-                        properties = self.record_mapper.map_to_notion_properties(record)
-                        
-                        # Create page in Notion
-                        self.api_client.create_page(database_id, properties)
+                        # Map record to Notion properties and icon
+                        properties, icon = self.record_mapper.map_to_notion_properties_and_icon(record)
+
+                        # Create page in Notion with icon
+                        page = self.api_client.create_page(database_id, properties, icon)
+                        page_id = page["id"]
+                        self.logger.debug(f"Created page {page_id} for record {i+1}")
+
+                        # Create content blocks
+                        blocks = self.record_mapper.create_page_content_blocks(record)
+
+                        # Add content blocks to page
+                        if blocks:
+                            try:
+                                self.api_client.append_blocks_to_page(page_id, blocks)
+                                self.logger.debug(f"Added {len(blocks)} content blocks to page {page_id}")
+                            except Exception as block_error:
+                                self.logger.error(f"Error adding content blocks: {str(block_error)}")
+                                
+                                # Try to add blocks one by one to identify and skip problematic ones
+                                successful_blocks = 0
+                                for i, block in enumerate(blocks):
+                                    try:
+                                        # Verify text content length for paragraph blocks
+                                        if block.get("type") == "paragraph":
+                                            rich_text = block.get("paragraph", {}).get("rich_text", [])
+                                            for text_item in rich_text:
+                                                content = text_item.get("text", {}).get("content", "")
+                                                if len(content) > 1900:  # Using 1900 as a safety margin
+                                                    self.logger.warning(f"Truncating oversized text block ({len(content)} chars)")
+                                                    text_item["text"]["content"] = content[:1900] + "..."
+                                        
+                                        # Add individual block
+                                        self.api_client.append_blocks_to_page(page_id, [block])
+                                        successful_blocks += 1
+                                    except Exception as e:
+                                        self.logger.warning(f"Skipping problematic block {i}: {str(e)}")
+                                        
+                                self.logger.info(f"Added {successful_blocks}/{len(blocks)} blocks with fallback method")
+
                         success_count += 1
-                        
+
                         # Log progress
                         if i % 10 == 0 or i == total_rows - 1:
                             self.logger.info(f"Progress: {i+1}/{total_rows} records processed")
-                            
+
                     except Exception as e:
                         error_count += 1
                         error_msg = f"Error exporting record {i+1}: {str(e)}"
                         error_messages.append(error_msg)
                         self.logger.error(error_msg)
-                        
+
                         # Only store up to 10 error messages to avoid excessive memory usage
                         if len(error_messages) > 10:
                             error_messages.append("Additional errors omitted...")
                             break
-            
+                            
             self.logger.info(f"Export completed: {success_count} succeeded, {error_count} failed")
             return success_count > 0, success_count, error_count, error_messages
-            
+
         except Exception as e:
             error_msg = f"Failed to export CSV to Notion: {str(e)}"
             self.logger.error(error_msg)
