@@ -129,7 +129,16 @@ class HttpNotionApiClient(NotionApiClient):
         payload = {
             "children": blocks
         }
-    
+
+        # Log image blocks for debugging
+        for i, block in enumerate(blocks):
+            if block.get("type") == "image":
+                image_url = block.get("image", {}).get("external", {}).get("url", "")
+                self.logger.info(f"Sending image block {i} with URL: {image_url}")
+                self.logger.debug(f"Full image block JSON: {json.dumps(block, indent=2)}")
+
+        self.logger.debug(f"Full payload being sent: {json.dumps(payload, indent=2)}")
+
         return self._make_request("PATCH", url, json_data=payload)
     
     def get_users(self) -> List[Dict[str, Any]]:

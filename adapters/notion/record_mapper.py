@@ -107,11 +107,12 @@ class GoogleBooksNotionRecordMapper(NotionRecordMapper):
         properties = self.map_to_notion_properties(record)
         
         # Extract URL of the cover for icon and cover image
-        cover_url = self._get_value_by_priority(record, ["GB_Capa_Link"], None)
-        
+        cover_url_raw = self._get_value_by_priority(record, ["GB_Capa_Link"], None)
+        cover_url = self._normalize_image_url(cover_url_raw)
+
         icon = None
         cover = None
-        
+
         if cover_url:
             # Set icon (small image next to title)
             icon = {
@@ -120,7 +121,7 @@ class GoogleBooksNotionRecordMapper(NotionRecordMapper):
                     "url": cover_url
                 }
             }
-            
+
             # Set cover (banner image at top of page)
             cover = {
                 "type": "external",
@@ -128,21 +129,27 @@ class GoogleBooksNotionRecordMapper(NotionRecordMapper):
                     "url": cover_url
                 }
             }
-            
+
             self.logger.debug(f"Set cover image as icon and page cover: {cover_url}")
-        
+        else:
+            if cover_url_raw:
+                self.logger.warning(f"Invalid cover URL format for icon/cover: {cover_url_raw}")
+
         return properties, icon, cover
     
-    def create_page_content_blocks(self, record: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def create_page_content_blocks(self, record: Dict[str, Any], reusable_image_url: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Creates content blocks for a Notion page.
-        
+
         Args:
             record: Record data from CSV
-            
+            reusable_image_url: Optional pre-validated image URL (currently unused due to Notion API limitations)
+
         Returns:
             List of block objects
         """
+        # Note: reusable_image_url parameter is kept for API compatibility but not used
+        # because Google Books URLs work for icon/cover but are rejected for image blocks
         blocks = []
         
         # Título como cabeçalho H1
@@ -163,35 +170,23 @@ class GoogleBooksNotionRecordMapper(NotionRecordMapper):
             "type": "paragraph",
             "paragraph": {"rich_text": []}
         })
-        
-        # Imagem de capa (em tamanho maior)
-        # Usar bookmark em vez de imagem direta
-        cover_url = self._get_value_by_priority(record, ["GB_Capa_Link"], None)
-        preview_link = self._get_value_by_priority(record, ["GB_Preview_Link"], None)
 
-        # Preferir o link de prévia se disponível (que normalmente renderiza uma capa)
+        preview_link_raw = self._get_value_by_priority(record, ["GB_Preview_Link"], None)
+        preview_link = self._normalize_image_url(preview_link_raw)
+
+        # Adicionar link de prévia do Google Books se disponível
         if preview_link:
-            blocks.append({
-                "object": "block",
-                "type": "bookmark",
-                "bookmark": {
-                    "url": preview_link
-                }
-            })
-            self.logger.debug(f"Added preview bookmark: {preview_link}")
-        # Como fallback, tentar usar a URL da capa
-        elif cover_url:
             blocks.append({
                 "object": "block",
                 "type": "paragraph",
                 "paragraph": {
                     "rich_text": [
-                        {"type": "text", "text": {"content": "Capa: "}, "annotations": {"bold": True}},
-                        {"type": "text", "text": {"content": "Ver imagem", "link": {"url": cover_url}}}
+                        {"type": "text", "text": {"content": "📖 "}, "annotations": {"bold": True}},
+                        {"type": "text", "text": {"content": "Prévia no Google Books", "link": {"url": preview_link}}}
                     ]
                 }
             })
-            self.logger.debug(f"Added cover image link: {cover_url}")
+            self.logger.debug(f"Added Google Books preview link: {preview_link}")
         
         # Bloco vazio para espaçamento
         blocks.append({
@@ -270,7 +265,38 @@ class GoogleBooksNotionRecordMapper(NotionRecordMapper):
                     ]
                 }
             })
-        
+
+        # Add image block at the END of the page
+        # This is after all text content has been added
+        cover_url_raw = self._get_value_by_priority(record, ["GB_Capa_Link"], None)
+
+        if cover_url_raw and cover_url_raw.strip():
+            # Convert HTTP to HTTPS
+            cover_url_for_api = cover_url_raw.strip()
+            if cover_url_for_api.startswith("http://"):
+                cover_url_for_api = cover_url_for_api.replace("http://", "https://", 1)
+
+            # Add spacing before image
+            blocks.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {"rich_text": []}
+            })
+
+            # Add the image block
+            image_block = {
+                "object": "block",
+                "type": "image",
+                "image": {
+                    "type": "external",
+                    "external": {
+                        "url": cover_url_for_api
+                    }
+                }
+            }
+            blocks.append(image_block)
+            self.logger.info(f"Added image block at END - Original: {cover_url_raw.strip()}, API: {cover_url_for_api}")
+
         return blocks
     
     def get_property_maps(self) -> List[Dict[str, Any]]:
@@ -366,3 +392,28 @@ class GoogleBooksNotionRecordMapper(NotionRecordMapper):
     
     def _format_url_property(self, value: str) -> Dict[str, Any]:
         return {"url": value}
+
+    def _normalize_image_url(self, url: Optional[str]) -> Optional[str]:
+        """
+        Normalizes an image URL for use with Notion API.
+
+        Args:
+            url: The URL to normalize
+
+        Returns:
+            Normalized HTTPS URL or None if invalid
+        """
+        if not url or not url.strip():
+            return None
+
+        url = url.strip()
+
+        # Convert HTTP to HTTPS (Notion requires HTTPS)
+        if url.startswith("http://"):
+            url = url.replace("http://", "https://", 1)
+
+        # Validate it's a valid HTTPS URL
+        if url.startswith("https://"):
+            return url
+
+        return None

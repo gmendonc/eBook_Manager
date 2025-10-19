@@ -76,14 +76,19 @@ class NotionExportService:
                     try:
                         # Map record to Notion properties, icon, and cover
                         properties, icon, cover = self.record_mapper.map_to_notion_properties_and_icon(record)
-                        
+
                         # Create page in Notion with icon and cover
                         page = self.api_client.create_page(database_id, properties, icon, cover)
                         page_id = page["id"]
                         self.logger.debug(f"Created page {page_id} for record {i+1}")
 
-                        # Create content blocks
-                        blocks = self.record_mapper.create_page_content_blocks(record)
+                        # Retrieve the page to get the actual cover URL that Notion accepted
+                        # This ensures we use the exact same URL format that worked for the cover
+                        page_data = self.api_client.get_page(page_id)
+                        reusable_image_url = self._get_reusable_image_url(page_data)
+
+                        # Create content blocks, passing the reusable image URL
+                        blocks = self.record_mapper.create_page_content_blocks(record, reusable_image_url)
 
                         # Add content blocks to page
                         if blocks:
@@ -92,10 +97,10 @@ class NotionExportService:
                                 self.logger.debug(f"Added {len(blocks)} content blocks to page {page_id}")
                             except Exception as block_error:
                                 self.logger.error(f"Error adding content blocks: {str(block_error)}")
-                                
+
                                 # Try to add blocks one by one to identify and skip problematic ones
                                 successful_blocks = 0
-                                for i, block in enumerate(blocks):
+                                for j, block in enumerate(blocks):
                                     try:
                                         # Verify text content length for paragraph blocks
                                         if block.get("type") == "paragraph":
@@ -105,13 +110,13 @@ class NotionExportService:
                                                 if len(content) > 1900:  # Using 1900 as a safety margin
                                                     self.logger.warning(f"Truncating oversized text block ({len(content)} chars)")
                                                     text_item["text"]["content"] = content[:1900] + "..."
-                                        
+
                                         # Add individual block
                                         self.api_client.append_blocks_to_page(page_id, [block])
                                         successful_blocks += 1
                                     except Exception as e:
-                                        self.logger.warning(f"Skipping problematic block {i}: {str(e)}")
-                                        
+                                        self.logger.warning(f"Skipping problematic block {j}: {str(e)}")
+
                                 self.logger.info(f"Added {successful_blocks}/{len(blocks)} blocks with fallback method")
 
                         success_count += 1
@@ -173,4 +178,47 @@ class NotionExportService:
                 return None
         
         self.logger.error("No valid database ID and no page ID to create a new database")
+        return None
+
+    def _get_reusable_image_url(self, page_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Extracts a reusable image URL from the page's icon or cover.
+        This is the same URL that Notion accepted when creating the page,
+        so it should work for image blocks too.
+
+        Args:
+            page_data: Page data from Notion API
+
+        Returns:
+            Image URL if found, None otherwise
+        """
+        # Try icon first
+        icon = page_data.get("icon")
+        if icon:
+            if icon.get("type") == "external":
+                url = icon.get("external", {}).get("url")
+                if url:
+                    self.logger.debug(f"Found reusable image URL from icon: {url}")
+                    return url
+            elif icon.get("type") == "file":
+                url = icon.get("file", {}).get("url")
+                if url:
+                    self.logger.debug(f"Found reusable image URL from icon (file): {url}")
+                    return url
+
+        # Try cover
+        cover = page_data.get("cover")
+        if cover:
+            if cover.get("type") == "external":
+                url = cover.get("external", {}).get("url")
+                if url:
+                    self.logger.debug(f"Found reusable image URL from cover: {url}")
+                    return url
+            elif cover.get("type") == "file":
+                url = cover.get("file", {}).get("url")
+                if url:
+                    self.logger.debug(f"Found reusable image URL from cover (file): {url}")
+                    return url
+
+        self.logger.debug("No reusable image URL found in page")
         return None
