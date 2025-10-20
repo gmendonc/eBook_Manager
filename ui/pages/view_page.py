@@ -462,6 +462,12 @@ def render_view_page(library_service, app_state):
                         print("DEBUG: Saída da execução do botão de exportação") # Print no console
         
         with col3:
+            # Obsidian export button
+            from ui.components.obsidian_export_component import render_obsidian_export_button
+            render_obsidian_export_button(selected_file, app_state)
+
+            st.markdown("---")
+
             if st.button("Ver Dashboard"):
                 app_state.set_last_processed_file(selected_file)
                 app_state.change_page("dashboard")

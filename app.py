@@ -149,6 +149,9 @@ if st.sidebar.button("⚙️ Configurar Fontes"):
 if st.sidebar.button("⚙️ Configurar Notion"):
     app_state.change_page("notion_config")
     st.rerun()
+if st.sidebar.button("🔮 Configurar Obsidian"):
+    app_state.change_page("obsidian_config")
+    st.rerun()
 if st.sidebar.button("🔍 Escanear Fontes"):
     app_state.change_page("scan")
     st.rerun()
@@ -172,3 +175,29 @@ render_page(current_page, library_service, app_state)
 # Footer
 st.markdown("---")
 st.markdown("📚 Gerenciador de Biblioteca de Ebooks v2.0.0 | Refatorado para princípios SOLID")
+
+import logging
+from adapters.scanners.icloud_scanner import ICloudScanner
+
+logger = logging.getLogger(__name__)
+
+def execute_scan():
+    try:
+        # Obter credenciais da configuração ou ambiente
+        username = config.get('ICLOUD_USERNAME')
+        password = config.get('ICLOUD_PASSWORD')
+        
+        if not username or not password:
+            logger.error("Credenciais do iCloud não configuradas")
+            return None
+            
+        # Inicializar e autenticar o scanner
+        scanner = ICloudScanner(username, password)
+        scanner.authenticate()  # Agora vai lidar com 2FA automaticamente
+        
+        # Executar o scan
+        return scanner.scan()
+        
+    except Exception as e:
+        logger.error(f"Erro durante o scan do iCloud: {str(e)}")
+        return None

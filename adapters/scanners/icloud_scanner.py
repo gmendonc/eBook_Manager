@@ -3,8 +3,11 @@ import os
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from pyicloud import PyiCloudService
+from pyicloud.exceptions import PyiCloudFailedLoginException, PyiCloudException
 from core.interfaces.scanner import Scanner
 from core.services.credential_service import CredentialService
+
+logger = logging.getLogger(__name__)
 
 class ICloudScanner(Scanner):
     """Scanner para fonte iCloud com gerenciamento seguro de credenciais."""
@@ -53,6 +56,13 @@ class ICloudScanner(Scanner):
         try:
             # Conectar ao iCloud
             api = PyiCloudService(username, password)
+            
+            if api.requires_2fa:
+                self.logger.info("Autenticação de dois fatores necessária.")
+                verification_code = self._get_verification_code()
+                if not api.validate_2fa_code(verification_code):
+                    raise Exception("Código de verificação 2FA inválido")
+                self.logger.info("Autenticação 2FA realizada com sucesso")
             
             # Verificar se precisa de 2FA
             if api.requires_2fa:
@@ -180,3 +190,9 @@ class ICloudScanner(Scanner):
         except Exception as e:
             self.logger.error(f"Erro ao salvar relatório CSV: {str(e)}")
             raise
+    
+    def _get_verification_code(self):
+        """Solicita e retorna o código de verificação 2FA"""
+        print("\nUm código de verificação foi enviado para seus dispositivos Apple.")
+        print("Por favor, verifique suas notificações.")
+        return input("Digite o código de verificação (xxx-xxx): ").strip()
