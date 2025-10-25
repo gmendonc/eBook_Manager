@@ -4,16 +4,16 @@ from typing import Dict, Any, Optional
 def render_source_form(library_service):
     """
     Renderiza o formulário de adição de fonte.
-    
+
     Args:
         library_service: Serviço da biblioteca
-        
+
     Returns:
         Um dicionário com o resultado da adição de fonte, ou None se não foi adicionada
     """
     with st.form("add_source_form"):
         name = st.text_input("Nome da Fonte", placeholder="Ex: Meus Ebooks no iCloud")
-        
+
         source_type = st.selectbox(
             "Tipo de Fonte",
             options=["icloud", "filesystem", "dropbox", "kindle", "kindle_cloud"],
@@ -25,7 +25,7 @@ def render_source_form(library_service):
                 "kindle_cloud": "Amazon Kindle Cloud Reader"
             }[x]
         )
-        
+
         path = st.text_input(
             "Caminho",
             placeholder={"icloud": "Ex: Documents/Ebooks",
@@ -34,10 +34,16 @@ def render_source_form(library_service):
                          "kindle": "Ex: biblioteca_kindle.csv",
                          "kindle_cloud": "cloud"}[source_type]
         )
-        
+
         # Configurações específicas por tipo
         config = {}
-        
+        username = None
+        password = None
+        token = None
+        email = None
+        amazon_domain = None
+        save_credentials = False
+
         if source_type == "icloud":
             st.subheader("Credenciais do iCloud")
             st.markdown("""
@@ -49,13 +55,13 @@ def render_source_form(library_service):
             username = st.text_input("Email do iCloud")
             password = st.text_input("Senha do iCloud", type="password")
             save_credentials = st.checkbox("Salvar credenciais de forma segura", value=True)
-            
+
             config = {
                 "username": username,
                 "password": password,
                 "save_credentials": save_credentials
             }
-            
+
         elif source_type == "dropbox":
             st.subheader("Configuração do Dropbox")
             st.markdown("Você precisa de um token de acesso do Dropbox. [Saiba mais](https://www.dropbox.com/developers/apps)")
@@ -100,7 +106,7 @@ def render_source_form(library_service):
             }
 
         submitted = st.form_submit_button("Adicionar Fonte")
-        
+
         if submitted:
             if not name or not path:
                 st.error("Nome e caminho são obrigatórios.")
