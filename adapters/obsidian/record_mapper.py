@@ -41,6 +41,13 @@ class GoogleBooksObsidianRecordMapper:
         now = datetime.now()
 
         # Build template data dictionary
+        # Get file path first as it's needed for description
+        file_path = self._get_field(record, ["Caminho"], "")
+
+        # Build description with file path appended
+        base_description = self._get_field(record, ["GB_Descricao"], "")
+        description = self._build_description_with_path(base_description, file_path)
+
         data = {
             # Book metadata (with priority fallback)
             "title": self._get_title(record),
@@ -51,7 +58,7 @@ class GoogleBooksObsidianRecordMapper:
             "isbn10": self._get_field(record, ["GB_ISBN10"], ""),
             "isbn13": self._get_field(record, ["GB_ISBN13"], ""),
             "coverUrl": self._get_field(record, ["GB_Capa_Link"], ""),
-            "description": self._get_field(record, ["GB_Descricao"], ""),
+            "description": description,
             "categories": self._get_field(record, ["GB_Categorias"], ""),
             "topics": self._format_topics_list(self._get_topics(record)),
             "language": self._get_field(record, ["GB_Idioma"], ""),
@@ -60,7 +67,7 @@ class GoogleBooksObsidianRecordMapper:
             # File metadata
             "format": self._get_format(record),
             "file_size": self._get_field(record, ["Tamanho(MB)"], ""),
-            "file_path": self._get_field(record, ["Caminho"], ""),
+            "file_path": file_path,
             "modified_date": self._get_field(record, ["Data Modificação"], ""),
 
             # Date fields (current timestamp)
@@ -282,3 +289,24 @@ class GoogleBooksObsidianRecordMapper:
 
         # Return as list format for YAML: [item1, item2]
         return "[" + ", ".join(topics) + "]"
+
+    def _build_description_with_path(self, description: str, file_path: str) -> str:
+        """
+        Build description with file path appended at the end.
+
+        Args:
+            description: Base description text from Google Books
+            file_path: Path to the ebook file
+
+        Returns:
+            Description with file path appended (if path exists)
+        """
+        if not file_path:
+            return description
+
+        # If description is empty, just return the file path section
+        if not description:
+            return f"\n\n---\n\n**File Location:** `{file_path}`"
+
+        # Append file path to existing description
+        return f"{description}\n\n---\n\n**File Location:** `{file_path}`"

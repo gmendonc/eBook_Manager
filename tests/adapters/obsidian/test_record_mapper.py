@@ -51,7 +51,10 @@ class TestGoogleBooksObsidianRecordMapper(unittest.TestCase):
         self.assertEqual(result["isbn10"], "0132350882")
         self.assertEqual(result["isbn13"], "9780132350884")
         self.assertEqual(result["coverUrl"], "https://example.com/cover.jpg")
-        self.assertEqual(result["description"], "A handbook of agile software craftsmanship")
+        # Description should now include file path at the end
+        self.assertIn("A handbook of agile software craftsmanship", result["description"])
+        self.assertIn("/path/to/book.pdf", result["description"])
+        self.assertIn("File Location:", result["description"])
         self.assertEqual(result["categories"], "Computers, Programming")
         self.assertEqual(result["language"], "en")
         self.assertEqual(result["preview_link"], "https://books.google.com/preview")
@@ -108,6 +111,7 @@ class TestGoogleBooksObsidianRecordMapper(unittest.TestCase):
         self.assertEqual(result["totalPage"], "")
         self.assertEqual(result["isbn10"], "")
         self.assertEqual(result["isbn13"], "")
+        # Description will be empty when no file path is provided
         self.assertEqual(result["description"], "")
         # Should have defaults from config
         self.assertEqual(result["status"], "unread")
@@ -350,6 +354,48 @@ class TestGoogleBooksObsidianRecordMapper(unittest.TestCase):
         result = self.mapper.map_record(record, self.config)
 
         self.assertEqual(result["format"], "pdf")
+
+    def test_build_description_with_path_appends_file_location(self):
+        """Test that file path is appended to description."""
+        description = "This is a book description"
+        file_path = "/home/user/books/mybook.pdf"
+
+        result = self.mapper._build_description_with_path(description, file_path)
+
+        self.assertIn("This is a book description", result)
+        self.assertIn("File Location:", result)
+        self.assertIn("/home/user/books/mybook.pdf", result)
+        self.assertIn("---", result)
+
+    def test_build_description_with_path_no_path(self):
+        """Test description when file path is empty."""
+        description = "This is a book description"
+        file_path = ""
+
+        result = self.mapper._build_description_with_path(description, file_path)
+
+        self.assertEqual(result, description)
+        self.assertNotIn("File Location:", result)
+
+    def test_build_description_with_path_empty_description(self):
+        """Test file path section when description is empty."""
+        description = ""
+        file_path = "/home/user/books/mybook.pdf"
+
+        result = self.mapper._build_description_with_path(description, file_path)
+
+        self.assertIn("File Location:", result)
+        self.assertIn("/home/user/books/mybook.pdf", result)
+        self.assertIn("---", result)
+
+    def test_build_description_with_path_both_empty(self):
+        """Test when both description and path are empty."""
+        description = ""
+        file_path = ""
+
+        result = self.mapper._build_description_with_path(description, file_path)
+
+        self.assertEqual(result, "")
 
 
 if __name__ == '__main__':
