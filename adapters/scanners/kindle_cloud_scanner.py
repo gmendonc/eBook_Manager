@@ -225,27 +225,54 @@ class KindleCloudScanner(Scanner):
             logger.info("Navegando para Kindle Cloud Reader...")
             self._driver.get(base_url)
 
-            # Aguardar página carregar
-            WebDriverWait(self._driver, self.LOGIN_TIMEOUT).until(
-                EC.presence_of_element_located((By.ID, "ap_email"))
-            )
+            # Aguardar página carregar - tentar múltiplos seletores
+            try:
+                WebDriverWait(self._driver, self.LOGIN_TIMEOUT).until(
+                    EC.presence_of_element_located((By.ID, "ap_email"))
+                )
+                logger.debug("Campo de email detectado (ID: ap_email)")
+            except TimeoutException:
+                logger.warning("Seletor #ap_email não encontrado, tentando alternativas...")
+                try:
+                    WebDriverWait(self._driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='email']"))
+                    )
+                    logger.debug("Campo de email detectado (CSS: input[type='email'])")
+                except TimeoutException:
+                    logger.error("Não foi possível encontrar campo de email em nenhum formato")
+                    logger.error(f"URL atual: {self._driver.current_url}")
+                    logger.error(f"Primeira 500 chars da página: {self._driver.page_source[:500]}")
+                    return False
 
             logger.debug("Página de login detectada")
 
-            # Preencher email
-            email_field = self._driver.find_element(By.ID, "ap_email")
+            # Preencher email - tentar múltiplos seletores
+            try:
+                email_field = self._driver.find_element(By.ID, "ap_email")
+            except:
+                email_field = self._driver.find_element(By.CSS_SELECTOR, "input[type='email']")
+
             email_field.clear()
             email_field.send_keys(email)
+            logger.debug("Email preenchido")
 
             # Preencher senha
-            password_field = self._driver.find_element(By.ID, "ap_password")
+            try:
+                password_field = self._driver.find_element(By.ID, "ap_password")
+            except:
+                password_field = self._driver.find_element(By.CSS_SELECTOR, "input[type='password']")
+
             password_field.clear()
             password_field.send_keys(password)
+            logger.debug("Senha preenchida")
 
             # Clicar botão de login
-            login_button = self._driver.find_element(By.ID, "signInSubmit")
-            login_button.click()
+            try:
+                login_button = self._driver.find_element(By.ID, "signInSubmit")
+            except:
+                login_button = self._driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
 
+            login_button.click()
             logger.debug("Formulário de login enviado")
 
             # Aguardar carregamento (pode redirecionar ou exigir 2FA)
@@ -273,7 +300,7 @@ class KindleCloudScanner(Scanner):
             logger.error("Timeout ao fazer login no Kindle Cloud Reader")
             return False
         except Exception as e:
-            logger.error(f"Erro ao fazer login: {str(e)}")
+            logger.error(f"Erro ao fazer login: {str(e)}", exc_info=True)
             return False
 
     def _extract_library(self, base_url: str) -> List[Dict[str, Any]]:
