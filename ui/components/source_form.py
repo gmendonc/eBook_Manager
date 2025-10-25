@@ -16,21 +16,23 @@ def render_source_form(library_service):
         
         source_type = st.selectbox(
             "Tipo de Fonte",
-            options=["icloud", "filesystem", "dropbox", "kindle"],
+            options=["icloud", "filesystem", "dropbox", "kindle", "kindle_cloud"],
             format_func=lambda x: {
                 "icloud": "iCloud Drive",
                 "filesystem": "Sistema de Arquivos Local",
                 "dropbox": "Dropbox",
-                "kindle": "Amazon Kindle"
+                "kindle": "Amazon Kindle (CSV Exportado)",
+                "kindle_cloud": "Amazon Kindle Cloud Reader"
             }[x]
         )
         
         path = st.text_input(
-            "Caminho", 
+            "Caminho",
             placeholder={"icloud": "Ex: Documents/Ebooks",
                          "filesystem": "Ex: C:/Meus Ebooks",
                          "dropbox": "Ex: /Ebooks",
-                         "kindle": "Ex: biblioteca_kindle.csv"}[source_type]
+                         "kindle": "Ex: biblioteca_kindle.csv",
+                         "kindle_cloud": "cloud"}[source_type]
         )
         
         # Configurações específicas por tipo
@@ -59,7 +61,44 @@ def render_source_form(library_service):
             st.markdown("Você precisa de um token de acesso do Dropbox. [Saiba mais](https://www.dropbox.com/developers/apps)")
             token = st.text_input("Token de Acesso")
             config = {"token": token}
-        
+
+        elif source_type == "kindle_cloud":
+            st.subheader("Credenciais do Kindle Cloud Reader")
+            st.markdown("""
+            <div class="info-card">
+            <p><strong>Como funciona:</strong></p>
+            <ol>
+            <li>Você fornece suas credenciais Amazon</li>
+            <li>O sistema abre um navegador automatizado</li>
+            <li>Faz login e extrai sua biblioteca do Kindle Cloud Reader</li>
+            <li>Credenciais armazenadas de forma segura no chaveiro do sistema</li>
+            </ol>
+            <p><strong>Regiões suportadas:</strong> amazon.com, amazon.com.br, amazon.co.uk, amazon.de</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+            amazon_domain = st.selectbox(
+                "Região Amazon",
+                options=["amazon.com", "amazon.com.br", "amazon.co.uk", "amazon.de"],
+                format_func=lambda x: {
+                    "amazon.com": "🇺🇸 Amazon.com (EUA)",
+                    "amazon.com.br": "🇧🇷 Amazon.com.br (Brasil)",
+                    "amazon.co.uk": "🇬🇧 Amazon.co.uk (UK)",
+                    "amazon.de": "🇩🇪 Amazon.de (Alemanha)"
+                }[x]
+            )
+
+            email = st.text_input("Email Amazon")
+            password = st.text_input("Senha Amazon", type="password")
+            save_credentials = st.checkbox("Salvar credenciais de forma segura", value=True)
+
+            config = {
+                "amazon_domain": amazon_domain,
+                "email": email,
+                "password": password,
+                "save_credentials": save_credentials
+            }
+
         submitted = st.form_submit_button("Adicionar Fonte")
         
         if submitted:
@@ -72,15 +111,24 @@ def render_source_form(library_service):
             elif source_type == "dropbox" and not token:
                 st.error("Token do Dropbox é obrigatório.")
                 return None
+            elif source_type == "kindle_cloud" and (not email or not password):
+                st.error("Email e senha do Kindle Cloud Reader são obrigatórios.")
+                return None
             else:
                 source_id, temp_credentials = library_service.add_source(name, source_type, path, config)
                 
                 if source_id:
                     st.success(f"Fonte '{name}' adicionada com sucesso!")
-                    
+
                     # Mensagem específica para iCloud
                     if source_type == "icloud" and save_credentials:
                         st.info("As credenciais do iCloud foram armazenadas de forma segura.")
+
+                    # Mensagem específica para Kindle Cloud
+                    if source_type == "kindle_cloud":
+                        if save_credentials:
+                            st.info("As credenciais do Kindle foram armazenadas de forma segura.")
+                        st.info("Próximo passo: escaneie a fonte para carregar sua biblioteca do Kindle Cloud Reader")
                     
                     return {
                         "name": name,

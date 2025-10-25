@@ -29,6 +29,7 @@ from adapters.scanners.icloud_scanner import ICloudScanner
 from adapters.scanners.filesystem_scanner import FileSystemScanner
 from adapters.scanners.dropbox_scanner import DropboxScanner
 from adapters.scanners.kindle_scanner import KindleScanner
+from adapters.scanners.kindle_cloud_scanner import KindleCloudScanner
 # Importar os novos enriquecedores
 from adapters.enrichers.default_enricher import DefaultEnricher
 from adapters.enrichers.basic_enricher import BasicEnricher
@@ -86,7 +87,8 @@ if 'initialized' not in st.session_state:
         "icloud": ICloudScanner(credential_service),
         "filesystem": FileSystemScanner(),
         "dropbox": DropboxScanner(),
-        "kindle": KindleScanner()
+        "kindle": KindleScanner(),
+        "kindle_cloud": KindleCloudScanner(credential_service)
     }
     
     # Create services

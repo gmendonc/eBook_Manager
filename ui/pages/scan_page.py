@@ -82,8 +82,11 @@ def render_scan_page(library_service, app_state):
     
     if st.button(f"Escanear {selected_source}"):
         with st.spinner(f"Escaneando {selected_source}..."):
+            # Obter informações da fonte
+            source = next((s for s in sources if s.name == selected_source), None)
+
             csv_path = library_service.scan_source(selected_source)
-            
+
             if csv_path:
                 st.success(f"Escaneamento concluído! Arquivo: {csv_path}")
                 app_state.add_scan_result(
@@ -93,8 +96,15 @@ def render_scan_page(library_service, app_state):
                     csv_path
                 )
                 app_state.set_last_processed_file(csv_path)
-                
-                # Oferecer opções para próximos passos
+
+                # Fluxo especial para Kindle Cloud
+                if source and source.type == "kindle_cloud":
+                    st.session_state.kindle_temp_csv = csv_path
+                    st.info("📚 Redirecionando para revisão e seleção de livros Kindle...")
+                    st.session_state.page = 'kindle_review'
+                    st.rerun()
+
+                # Oferecer opções para próximos passos (para outras fontes)
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("Enriquecer Dados"):
@@ -107,7 +117,7 @@ def render_scan_page(library_service, app_state):
                     if st.button("Visualizar Dados"):
                         app_state.change_page("view")
                         st.rerun()
-                        
+
             else:
                 st.error(f"Erro ao escanear {selected_source}")
                 app_state.add_scan_result(

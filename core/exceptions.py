@@ -79,3 +79,46 @@ class ScannerError(EbookManagerError):
 class EnricherError(EbookManagerError):
     """Errors during enrichment operations."""
     pass
+
+
+# Kindle Scanner Exceptions
+
+class KindleError(EbookManagerError):
+    """Base exception for Kindle Cloud Reader errors."""
+    pass
+
+
+class KindleAuthenticationError(KindleError):
+    """
+    Authentication error with Kindle Cloud Reader.
+
+    Raised when:
+    - Invalid credentials provided
+    - Login fails
+    - 2FA is required but not supported
+    - Session expires
+    """
+    pass
+
+
+class KindleExtractionError(KindleError):
+    """
+    Library extraction error.
+
+    Raised when:
+    - Cannot load library from Kindle Cloud Reader
+    - Cannot extract book data
+    - Timeout while loading books
+    """
+    pass
+
+
+class KindleConfigError(KindleError):
+    """
+    Configuration error for Kindle scanner.
+
+    Raised when:
+    - Invalid Amazon domain
+    - Missing required configuration fields
+    """
+    pass
